@@ -29,6 +29,7 @@ import { extractReactor } from './maven-graph.mjs';
 import { diffMigrations } from './migrations-diff.mjs';
 import { diffModules } from './module-diff.mjs';
 import { apiVerdict, diffOpenApi } from './openapi-diff.mjs';
+import { diffEntryComplexity, ENTRY_COMPLEXITY_SECTION } from './entry-complexity-diff.mjs';
 import { packagePlaywright } from './playwright-diff.mjs';
 import {
   ASYNCAPI_SECTION,
@@ -329,6 +330,23 @@ export function run(options) {
           maxVideos: playwright.maxVideos,
           maxTraces: playwright.maxTraces,
           pathFilter: playwright.pathFilter ?? undefined,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const entryComplexity = producerOfType(config, 'entry-complexity');
+    if (entryComplexity) {
+      pushSection(
+        ENTRY_COMPLEXITY_SECTION,
+        diffEntryComplexity(options.base, options.head, {
+          profile: entryComplexity.profile,
+          packs: entryComplexity.packs,
+          kinds: entryComplexity.kinds ?? undefined,
+          maxBar: entryComplexity.maxBar,
+          maxUntouched: entryComplexity.maxUntouched,
+          actionRoot: options.actionRoot ?? process.env.GITHUB_ACTION_PATH,
+          outDir: out,
           listDir: options.listDir,
         }),
       );

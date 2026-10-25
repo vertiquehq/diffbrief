@@ -23,6 +23,7 @@
       "resultsDirs": ["test-results"],
       "maxVideos": 10,
       "maxTraces": 10
-    }
+    },
+    { "type": "entry-complexity" }
   ]
 }

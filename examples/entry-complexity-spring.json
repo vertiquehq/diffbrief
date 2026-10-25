@@ -1,0 +1,10 @@
+{
+  "failOn": "never",
+  "producers": [
+    {
+      "type": "entry-complexity",
+      "profile": "vertique",
+      "packs": ["contrib/spring.json"]
+    }
+  ]
+}

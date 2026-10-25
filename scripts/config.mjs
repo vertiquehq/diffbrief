@@ -86,6 +86,7 @@ const KNOWN_TYPES = new Set([
   'dependencies',
   'sarif',
   'playwright',
+  'entry-complexity',
   'command',
 ]);
 
@@ -123,6 +124,8 @@ export function impliedRelevant(producer) {
       return ['**/pom.xml', '**/src/main/**'];
     case 'maven-reactor':
       return ['**/pom.xml'];
+    case 'entry-complexity':
+      return ['**/src/main/java/**'];
     default:
       return [];
   }
@@ -197,6 +200,16 @@ function normalizeProducer(raw, index) {
       maxVideos: raw.maxVideos == null ? 10 : Number(raw.maxVideos),
       maxTraces: raw.maxTraces == null ? 10 : Number(raw.maxTraces),
       pathFilter: Array.isArray(raw.pathFilter) ? raw.pathFilter.map(String) : null,
+    };
+  }
+  if (type === 'entry-complexity') {
+    return {
+      type: 'entry-complexity',
+      profile: raw.profile == null ? 'vertique' : String(raw.profile),
+      packs: Array.isArray(raw.packs) ? raw.packs.map(String) : [],
+      kinds: Array.isArray(raw.kinds) ? raw.kinds.map(String) : null,
+      maxBar: raw.maxBar == null ? 40 : Number(raw.maxBar),
+      maxUntouched: raw.maxUntouched == null ? 12 : Number(raw.maxUntouched),
     };
   }
   if (type === 'command') {

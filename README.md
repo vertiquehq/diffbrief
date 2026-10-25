@@ -43,7 +43,7 @@ JSON only (no extra runtime dependencies). Missing file → Maven + OpenAPI defa
 | `marker` / `title` / `artifact` | Sticky-comment marker, heading, and artifact name. |
 | `nodeCap` | Inline Mermaid node budget (default 60). Over that → DOT (+ SVG when `dot` is on `PATH`). |
 
-Built-in producers: `maven-reactor`, `openapi`, `asyncapi`, `migrations`, `i18n`, `dependencies`, `sarif`, `playwright`. Enabling a producer without an explicit `relevant` list also adds sensible path globs. See [`examples/full-stack.json`](examples/full-stack.json) and [`examples/reuse-caller-workflow.yml`](examples/reuse-caller-workflow.yml).
+Built-in producers: `maven-reactor`, `openapi`, `asyncapi`, `migrations`, `i18n`, `dependencies`, `sarif`, `playwright`, `entry-complexity`. Enabling a producer without an explicit `relevant` list also adds sensible path globs. See [`examples/full-stack.json`](examples/full-stack.json) and [`examples/reuse-caller-workflow.yml`](examples/reuse-caller-workflow.yml).
 
 ### `maven-reactor`
 
@@ -87,6 +87,10 @@ Diff two SARIF files and list findings introduced on head. **PMD:** use the offi
 ### `playwright`
 
 Does **not** run Playwright. Finds videos/traces under `test-results` / `playwright-report` (or `resultsDirs`), copies them into the diffbrief artifact under `playwright/`, and lists them in the sticky comment. Pair with action input `reuse-playwright-artifact` when another job uploaded the results.
+
+### `entry-complexity`
+
+Ranks entry points by cognitive complexity of the reachable flow (before → after), inspired by human-review’s Complexity tab. Built-in **Vertique** detectors only: JAX-RS, `@McpTool`, `@KafkaSource`, `@DelayedJobHandlerMethod`. Spring and others are opt-in packs — see [`contrib/spring.json`](contrib/spring.json) and [`docs/contributing-detectors.md`](docs/contributing-detectors.md). Never breaking. Typed service-contract calls are followed across the event-bus proxy; raw bus addresses are not.
 
 ### `command`
 
