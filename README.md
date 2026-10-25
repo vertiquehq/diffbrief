@@ -98,6 +98,25 @@ node --test tests/*.test.mjs
 
 `UPDATE_GOLDEN=1` rewrites fixture expectations under `fixtures/`. The real `oasdiff` cases run when `oasdiff` is on `PATH` (or `OASDIFF_BIN` points at it).
 
+## Design notes (human-review)
+
+diffbrief is a CI sticky-comment action, not a clone of
+[human-review](https://github.com/victorrentea/human-review). That project’s review page
+still shapes several choices here:
+
+- **One question per section** — headings ask what the reviewer came for
+  (`Did the API contract move?`, `What moved in the module graph?`).
+- **Verdict first** — a one-line oasdiff seal (compatible / not / did not move) before the
+  details, the way their API tab opens with a band.
+- **One differ** — oasdiff only; no second home-grown OpenAPI classifier (see their
+  [differ eval](https://github.com/victorrentea/human-review/blob/main/skills/human-review/reference/openapi-differ-eval.md)).
+- **No upload** — never `oasdiff --open`; external `$ref` fetches are disabled.
+- **Checked, not forgotten** — when a producer runs and finds nothing beside other
+  changes, the section can say it was checked (full “unchanged only” runs stay silent so
+  the sticky comment is removed).
+
+Larger ideas that still fit the product live in [`BACKLOG.md`](BACKLOG.md).
+
 ## Runtime cost
 
 On a warm Maven cache for a Vertique-sized OpenAPI compile (eight example modules), one side was about **25 seconds**. A relevant PR builds **base and head**, so plan on roughly **~50 seconds of compile** plus checkout, graph diff, oasdiff, and the comment API — usually **under a couple of minutes** when the cache hits. Irrelevant path changes skip the builds (classify + comment reconcile only). A cold dependency cache is dominated by Maven downloads and can be much longer; the example caller uses a 40-minute timeout as a safety margin.

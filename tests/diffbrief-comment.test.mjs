@@ -200,21 +200,26 @@ SPDX-License-Identifier: EUPL-1.2
       repo: REPO,
       client: api,
       execFile(_bin, args) {
-        if (args[0] === 'breaking') {
-          const error = new Error('err');
-          error.status = 1;
-          error.stdout = '1 error\n';
-          error.stderr = '';
-          throw error;
+        if (args[0] === 'changelog' && args.includes('json')) {
+          return `${JSON.stringify([{
+            id: 'api-path-removed-without-deprecation',
+            text: 'api path removed without deprecation',
+            level: 3,
+            operation: 'GET',
+            path: '/hello',
+          }])}\n`;
         }
         return '# API Changelog\n\n## API Changes\n\n- removed the path\n';
       },
     });
     assert.equal(result.breaking, true);
+    assert.equal(result.config.failOn, 'breaking');
     assert.equal(readFileSync(path.join(dir, 'out', 'breaking'), 'utf8'), 'true\n');
     assert.equal(api.calls[0], 'list');
     assert.equal(api.calls[1][0], 'create');
-    assert.match(readFileSync(path.join(dir, 'out', 'comment.md'), 'utf8'), /removed the path/);
+    const comment = readFileSync(path.join(dir, 'out', 'comment.md'), 'utf8');
+    assert.match(comment, /Not backward compatible/);
+    assert.match(comment, /removed the path/);
     rmSync(dir, { recursive: true, force: true });
   });
 

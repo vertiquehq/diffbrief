@@ -24,8 +24,15 @@ import { dryRunClient, readEvent, reconcile } from './comment.mjs';
 import { hasProducer, loadConfig, producerOfType } from './config.mjs';
 import { extractReactor } from './maven-graph.mjs';
 import { diffModules } from './module-diff.mjs';
-import { diffOpenApi } from './openapi-diff.mjs';
-import { BASE_BUILD_FAILED, buildComment, renderOpenApiMarkdown, renderReport, summaryText } from './report.mjs';
+import { apiVerdict, diffOpenApi } from './openapi-diff.mjs';
+import {
+  BASE_BUILD_FAILED,
+  buildComment,
+  renderOpenApiMarkdown,
+  renderReport,
+  renderVerdictBand,
+  summaryText,
+} from './report.mjs';
 import { stableStringify } from './util.mjs';
 
 const FLAGS = new Set(['dry-run', 'base-build-failed']);
@@ -164,7 +171,12 @@ export function run(options) {
     const openapiProducer = producerOfType(config, 'openapi');
     if (openapiProducer) {
       if (options.baseBuildFailed) {
-        openApi = { breaking: false, sections: [], runs: [] };
+        openApi = {
+          breaking: false,
+          sections: [],
+          runs: [],
+          verdict: apiVerdict(null, { baseBuildFailed: true }),
+        };
       } else {
         if (!options.baseSpecs || !options.headSpecs) {
           throw new Error('openapi producer requires --base-specs and --head-specs');
@@ -185,21 +197,29 @@ export function run(options) {
             entry.changelog.endsWith('\n') || entry.changelog === '' ? entry.changelog : `${entry.changelog}\n`;
           writeText(path.join(oasDir, `${name}.changelog.md`), changelog === '' ? '\n' : changelog);
           writeText(path.join(oasDir, `${name}.breaking.txt`), `exit: ${entry.breakingStatus}\n${entry.breakingText}`);
+          if (entry.changes) {
+            writeText(path.join(oasDir, `${name}.changelog.json`), `${stableStringify(entry.changes)}\n`);
+          }
         }
       }
       writeText(
         path.join(out, 'openapi-diff.json'),
         stableStringify({
           breaking: openApi.breaking,
-          entries: openApi.runs.map(({ path: specPath, kind, changelogStatus, breakingStatus }) => ({
+          verdict: openApi.verdict,
+          entries: openApi.runs.map(({ path: specPath, kind, changelogStatus, breakingStatus, summary }) => ({
             breakingStatus,
             changelogStatus,
             kind,
             path: specPath,
+            summary: summary ?? null,
           })),
           ...(options.baseBuildFailed ? { note: BASE_BUILD_FAILED } : {}),
         }),
       );
+      if (openApi.verdict) {
+        writeText(path.join(out, 'openapi-verdict.md'), `${renderVerdictBand(openApi.verdict)}\n`);
+      }
     }
 
     for (const producer of config.producers.filter((item) => item.type === 'command')) {
@@ -210,22 +230,31 @@ export function run(options) {
       breaking = breaking || result.breaking;
     }
 
-    const parts = [];
-    if (openApi) {
-      const openApiMarkdown = renderOpenApiMarkdown(openApi, { baseBuildFailed: options.baseBuildFailed });
-      if (openApiMarkdown.trim()) parts.push(`## OpenAPI changes\n\n${openApiMarkdown.trim()}\n`);
+    const openApiChecked = Boolean(openApi);
+    const moduleChecked = Boolean(moduleDiff);
+    const openApiMarkdown = openApi
+      ? renderOpenApiMarkdown(openApi, { baseBuildFailed: options.baseBuildFailed })
+      : '';
+    const moduleMarkdown = moduleDiff?.markdown ?? '';
+    report = renderReport({
+      openApiMarkdown,
+      moduleMarkdown,
+      verdict: openApi?.verdict ?? null,
+      openApiChecked,
+      moduleChecked,
+    });
+    if (extraSections.length) {
+      report = [report.trimEnd(), ...extraSections].filter(Boolean).join('\n\n') + '\n';
     }
-    if (moduleDiff?.markdown?.trim()) {
-      parts.push(`## Module graph changes\n\n${moduleDiff.markdown.trim()}\n`);
-    }
-    parts.push(...extraSections);
-    report = parts.join('\n');
-    // Keep renderReport available for tests that pass markdown pieces directly.
-    if (!parts.length && (moduleDiff || openApi)) {
-      report = renderReport({
-        openApiMarkdown: openApi ? renderOpenApiMarkdown(openApi, { baseBuildFailed: options.baseBuildFailed }) : '',
-        moduleMarkdown: moduleDiff?.markdown ?? '',
-      });
+    // A report that is only "checked — unchanged" stamps stays silent for the sticky comment.
+    if (
+      !moduleMarkdown.trim()
+      && !openApiMarkdown.trim()
+      && !extraSections.length
+      && !options.baseBuildFailed
+      && !(openApi?.verdict && openApi.verdict.kind !== 'no_changes' && openApi.verdict.kind !== 'not_run')
+    ) {
+      report = '';
     }
   }
 

@@ -1,4 +1,4 @@
-## Module graph changes
+## What moved in the module graph?
 
 Reactor version: `1.0.0` -> `2.0.0`
 
