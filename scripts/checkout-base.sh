@@ -26,3 +26,6 @@ fi
 
 merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
 git worktree add --detach "$BASE_DIR" "$merge_base"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "merge-base=${merge_base}" >> "$GITHUB_OUTPUT"
+fi

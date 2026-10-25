@@ -157,7 +157,9 @@ describe('action.yml', () => {
     assert.match(text, /github\.action_path.*scripts\/check-breaking\.mjs/);
   });
 
-  it('pins upload-artifact by commit SHA', () => {
+  it('pins upload-artifact and cache actions by commit SHA', () => {
     assert.match(yaml(), /actions\/upload-artifact@[0-9a-f]{40}/);
+    assert.match(yaml(), /actions\/cache\/restore@[0-9a-f]{40}/);
+    assert.match(yaml(), /actions\/cache\/save@[0-9a-f]{40}/);
   });
 });

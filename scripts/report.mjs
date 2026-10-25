@@ -28,6 +28,7 @@ export const I18N_SECTION = 'Did message keys change?';
 export const DEPENDENCIES_SECTION = 'Did third-party dependencies change?';
 export const ASYNCAPI_SECTION = 'Did the AsyncAPI contract move?';
 export const SARIF_SECTION = 'Were new SAST findings introduced?';
+export const PLAYWRIGHT_SECTION = 'Which Playwright flows were recorded?';
 export const OPENAPI_UNCHANGED = '_Checked — no OpenAPI document changed._';
 export const MODULE_UNCHANGED = '_Checked — module graph unchanged._';
 

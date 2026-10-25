@@ -1,0 +1,39 @@
+# Example: reuse OpenAPI specs and Playwright videos from other CI jobs.
+name: diffbrief
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: vertiquehq/diffbrief@v1
+        with:
+          config: .github/diffbrief.json
+          token: ${{ github.token }}
+          # Skip Maven compile when these artifact names exist from CI.
+          cache-specs: "true"
+          reuse-head-artifact: openapi-head-specs
+          reuse-base-artifact: openapi-base-specs
+          reuse-playwright-artifact: playwright-test-results

@@ -43,7 +43,7 @@ JSON only (no extra runtime dependencies). Missing file → Maven + OpenAPI defa
 | `marker` / `title` / `artifact` | Sticky-comment marker, heading, and artifact name. |
 | `nodeCap` | Inline Mermaid node budget (default 60). Over that → DOT (+ SVG when `dot` is on `PATH`). |
 
-Built-in producers: `maven-reactor`, `openapi`, `asyncapi`, `migrations`, `i18n`, `dependencies`, `sarif`. Enabling a producer without an explicit `relevant` list also adds sensible path globs. See [`examples/full-stack.json`](examples/full-stack.json).
+Built-in producers: `maven-reactor`, `openapi`, `asyncapi`, `migrations`, `i18n`, `dependencies`, `sarif`, `playwright`. Enabling a producer without an explicit `relevant` list also adds sensible path globs. See [`examples/full-stack.json`](examples/full-stack.json) and [`examples/reuse-caller-workflow.yml`](examples/reuse-caller-workflow.yml).
 
 ### `maven-reactor`
 
@@ -62,6 +62,8 @@ Parses `pom.xml` files without running Maven. Uniform reactor version bumps fold
 
 The oasdiff **GitHub Action is not used**, so specs are not uploaded to oasdiff.com.
 
+Set `cacheSpecs: true` (or action input `cache-specs: true`) to cache collected specs by head SHA and merge-base SHA. Pass `head-specs-dir` / `base-specs-dir` or `reuse-*-artifact` to skip the Maven compile when CI already produced the YAMLs.
+
 ### `asyncapi`
 
 Same idea as OpenAPI, via the AsyncAPI CLI (`asyncapi diff`). oasdiff does not support AsyncAPI. Put `asyncapi` on `PATH` (or set `ASYNCAPI_BIN`). Default globs: `**/asyncapi.yaml`, `**/asyncapi.yml`, `**/asyncapi.json`.
@@ -76,11 +78,15 @@ Message key add/remove/change in `.properties` and nested JSON locale files. Rem
 
 ### `dependencies`
 
-Maven reactor **external** dependency version moves (needs reactor models) plus top-level `package-lock.json` packages.
+Maven reactor **external** dependency version moves (needs reactor models), plus auto-detected lockfiles: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`. Override with `lockfiles: [...]`.
 
 ### `sarif`
 
 Diff two SARIF files and list findings introduced on head. **PMD:** use the official PMD GitHub Action (or `mvn pmd:pmd` + SARIF conversion) to produce base/head reports, then point `baseSarif` / `headSarif` here. Diffbrief does not run PMD. CPD duplication has no SARIF yet — use a `command` producer if you need it. Details: [`BACKLOG.md`](BACKLOG.md).
+
+### `playwright`
+
+Does **not** run Playwright. Finds videos/traces under `test-results` / `playwright-report` (or `resultsDirs`), copies them into the diffbrief artifact under `playwright/`, and lists them in the sticky comment. Pair with action input `reuse-playwright-artifact` when another job uploaded the results.
 
 ### `command`
 

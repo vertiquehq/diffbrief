@@ -3,7 +3,8 @@
 name: diffbrief
 description: >
   Sticky pull-request comment with configurable structural diffs (Maven
-  reactor graph, OpenAPI via oasdiff, or custom command producers).
+  reactor graph, OpenAPI via oasdiff, AsyncAPI, migrations, i18n, lockfiles,
+  SARIF, Playwright media, or custom command producers).
 author: Koivisto Capital Oy
 
 inputs:
@@ -34,6 +35,38 @@ inputs:
     description: Upload the out-dir as a workflow artifact.
     required: false
     default: 'true'
+  cache-specs:
+    description: >
+      Cache collected OpenAPI specs by git SHA (head + merge-base). Set true, or
+      enable openapi.cacheSpecs in the JSON config.
+    required: false
+    default: 'false'
+  head-specs-dir:
+    description: >
+      Pre-populated head OpenAPI specs directory (from a prior CI job artifact).
+      When it already contains openapi.yaml files, the head Maven compile is skipped.
+    required: false
+    default: ''
+  base-specs-dir:
+    description: Pre-populated base OpenAPI specs directory (same idea as head-specs-dir).
+    required: false
+    default: ''
+  reuse-head-artifact:
+    description: >
+      Name of a workflow artifact to download into the head specs dir before building
+      (cross-run reuse via gh api). Empty skips download.
+    required: false
+    default: ''
+  reuse-base-artifact:
+    description: Artifact name to download into the base specs dir (keyed by merge-base branch tip optional).
+    required: false
+    default: ''
+  reuse-playwright-artifact:
+    description: >
+      Artifact name whose contents are unpacked into the first Playwright results
+      directory (default test-results) before packaging videos/traces.
+    required: false
+    default: ''
 
 outputs:
   relevant:
@@ -42,6 +75,9 @@ outputs:
   breaking:
     description: Whether a producer reported a breaking change.
     value: ${{ steps.publish.outputs.breaking }}
+  merge-base:
+    description: Merge-base SHA used for the comparison.
+    value: ${{ steps.checkout-base.outputs.merge-base }}
 
 runs:
   using: composite
@@ -56,15 +92,27 @@ runs:
         INPUT_REPO: ${{ inputs.repository }}
         INPUT_OUT: ${{ inputs.out-dir }}
         INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_HEAD_SPECS: ${{ inputs.head-specs-dir }}
+        INPUT_BASE_SPECS: ${{ inputs.base-specs-dir }}
       run: |
+        out="${INPUT_OUT}"
         echo "base-sha=${INPUT_BASE_SHA:-${{ github.event.pull_request.base.sha }}}" >> "$GITHUB_OUTPUT"
         echo "head-sha=${INPUT_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" >> "$GITHUB_OUTPUT"
         echo "pr=${INPUT_PR:-${{ github.event.pull_request.number }}}" >> "$GITHUB_OUTPUT"
         echo "repo=${INPUT_REPO:-${{ github.repository }}}" >> "$GITHUB_OUTPUT"
-        echo "out=${INPUT_OUT}" >> "$GITHUB_OUTPUT"
+        echo "out=${out}" >> "$GITHUB_OUTPUT"
         echo "config=${INPUT_CONFIG}" >> "$GITHUB_OUTPUT"
         echo "base-dir=${RUNNER_TEMP}/diffbrief-base" >> "$GITHUB_OUTPUT"
-        echo "action=${{ github.action_path }}" >> "$GITHUB_OUTPUT"
+        if [[ -n "${INPUT_HEAD_SPECS}" ]]; then
+          echo "head-specs=${INPUT_HEAD_SPECS}" >> "$GITHUB_OUTPUT"
+        else
+          echo "head-specs=${GITHUB_WORKSPACE}/${out}/head-specs" >> "$GITHUB_OUTPUT"
+        fi
+        if [[ -n "${INPUT_BASE_SPECS}" ]]; then
+          echo "base-specs=${INPUT_BASE_SPECS}" >> "$GITHUB_OUTPUT"
+        else
+          echo "base-specs=${GITHUB_WORKSPACE}/${out}/base-specs" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Classify changed paths
       id: scope
@@ -84,6 +132,7 @@ runs:
       run: node "${{ github.action_path }}/scripts/prepare-openapi.mjs" >> "$GITHUB_OUTPUT"
 
     - name: Check out the merge base
+      id: checkout-base
       if: ${{ steps.scope.outputs.relevant == 'true' }}
       shell: bash
       env:
@@ -91,6 +140,80 @@ runs:
         HEAD_SHA: ${{ steps.meta.outputs.head-sha }}
         BASE_DIR: ${{ steps.meta.outputs.base-dir }}
       run: bash "${{ github.action_path }}/scripts/checkout-base.sh"
+
+    - name: Plan OpenAPI reuse
+      id: reuse
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      shell: bash
+      env:
+        BASE_SHA: ${{ steps.meta.outputs.base-sha }}
+        HEAD_SHA: ${{ steps.meta.outputs.head-sha }}
+        DIFFBRIEF_CONFIG: ${{ github.workspace }}/${{ steps.meta.outputs.config }}
+        OUT_DIR: ${{ github.workspace }}/${{ steps.meta.outputs.out }}
+        HEAD_SPECS: ${{ steps.meta.outputs.head-specs }}
+        BASE_SPECS: ${{ steps.meta.outputs.base-specs }}
+        DIFFBRIEF_CACHE_SPECS: ${{ inputs.cache-specs }}
+      run: node "${{ github.action_path }}/scripts/prepare-reuse.mjs" >> "$GITHUB_OUTPUT"
+
+    - name: Download reused head OpenAPI artifact
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && inputs.reuse-head-artifact != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ steps.meta.outputs.repo }}
+        ARTIFACT_NAME: ${{ inputs.reuse-head-artifact }}
+        DEST: ${{ steps.meta.outputs.head-specs }}
+      run: bash "${{ github.action_path }}/scripts/download-workflow-artifact.sh"
+
+    - name: Download reused base OpenAPI artifact
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && inputs.reuse-base-artifact != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ steps.meta.outputs.repo }}
+        ARTIFACT_NAME: ${{ inputs.reuse-base-artifact }}
+        DEST: ${{ steps.meta.outputs.base-specs }}
+      run: bash "${{ github.action_path }}/scripts/download-workflow-artifact.sh"
+
+    - name: Download Playwright results artifact
+      if: ${{ steps.scope.outputs.relevant == 'true' && inputs.reuse-playwright-artifact != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ steps.meta.outputs.repo }}
+        ARTIFACT_NAME: ${{ inputs.reuse-playwright-artifact }}
+        DEST: ${{ github.workspace }}/test-results
+      run: bash "${{ github.action_path }}/scripts/download-workflow-artifact.sh"
+
+    - name: Restore cached head OpenAPI specs
+      id: cache-head
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && (steps.reuse.outputs.cache-specs == 'true' || inputs.cache-specs == 'true') }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.meta.outputs.head-specs }}
+        key: ${{ steps.reuse.outputs.head-cache-key }}
+
+    - name: Restore cached base OpenAPI specs
+      id: cache-base
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && (steps.reuse.outputs.cache-specs == 'true' || inputs.cache-specs == 'true') }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.meta.outputs.base-specs }}
+        key: ${{ steps.reuse.outputs.base-cache-key }}
+
+    - name: Re-check OpenAPI reuse after cache/download
+      id: reuse2
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      shell: bash
+      env:
+        BASE_SHA: ${{ steps.meta.outputs.base-sha }}
+        HEAD_SHA: ${{ steps.meta.outputs.head-sha }}
+        DIFFBRIEF_CONFIG: ${{ github.workspace }}/${{ steps.meta.outputs.config }}
+        OUT_DIR: ${{ github.workspace }}/${{ steps.meta.outputs.out }}
+        HEAD_SPECS: ${{ steps.meta.outputs.head-specs }}
+        BASE_SPECS: ${{ steps.meta.outputs.base-specs }}
+        DIFFBRIEF_CACHE_SPECS: ${{ inputs.cache-specs }}
+      run: node "${{ github.action_path }}/scripts/prepare-reuse.mjs" >> "$GITHUB_OUTPUT"
 
     - name: Install oasdiff
       if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
@@ -102,11 +225,11 @@ runs:
       run: bash "${{ github.action_path }}/scripts/install-oasdiff.sh"
 
     - name: Build head OpenAPI specs
-      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && steps.reuse2.outputs.skip-head-build != 'true' }}
       shell: bash
       env:
         CHECKOUT: ${{ github.workspace }}
-        SPECS_OUT: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/head-specs
+        SPECS_OUT: ${{ steps.meta.outputs.head-specs }}
         DISCOVER: ${{ steps.producers.outputs.discover }}
         SPECS_GLOB: ${{ steps.producers.outputs.specs-glob }}
         SKIP_BUILD: ${{ steps.producers.outputs.skip-build }}
@@ -116,18 +239,32 @@ runs:
 
     - name: Build base OpenAPI specs
       id: build-base
-      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && steps.reuse2.outputs.skip-base-build != 'true' }}
       continue-on-error: true
       shell: bash
       env:
         CHECKOUT: ${{ steps.meta.outputs.base-dir }}
-        SPECS_OUT: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/base-specs
+        SPECS_OUT: ${{ steps.meta.outputs.base-specs }}
         DISCOVER: ${{ steps.producers.outputs.discover }}
         SPECS_GLOB: ${{ steps.producers.outputs.specs-glob }}
         SKIP_BUILD: ${{ steps.producers.outputs.skip-build }}
         BUILD_COMMAND_FILE: ${{ steps.producers.outputs.build-command-file }}
         SPECS_LIST_FILE: ${{ steps.producers.outputs.specs-list-file }}
       run: bash "${{ github.action_path }}/scripts/build-specs.sh"
+
+    - name: Save cached head OpenAPI specs
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && (steps.reuse.outputs.cache-specs == 'true' || inputs.cache-specs == 'true') && steps.reuse2.outputs.skip-head-build != 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.meta.outputs.head-specs }}
+        key: ${{ steps.reuse.outputs.head-cache-key }}
+
+    - name: Save cached base OpenAPI specs
+      if: ${{ always() && steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' && (steps.reuse.outputs.cache-specs == 'true' || inputs.cache-specs == 'true') && steps.reuse2.outputs.skip-base-build != 'true' && steps.build-base.outcome == 'success' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.meta.outputs.base-specs }}
+        key: ${{ steps.reuse.outputs.base-cache-key }}
 
     - name: Publish the review comment
       id: publish
@@ -136,8 +273,8 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         BASE_DIR: ${{ steps.meta.outputs.base-dir }}
         HEAD_DIR: ${{ github.workspace }}
-        BASE_SPECS: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/base-specs
-        HEAD_SPECS: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/head-specs
+        BASE_SPECS: ${{ steps.meta.outputs.base-specs }}
+        HEAD_SPECS: ${{ steps.meta.outputs.head-specs }}
         OUT_DIR: ${{ github.workspace }}/${{ steps.meta.outputs.out }}
         PR_NUMBER: ${{ steps.meta.outputs.pr }}
         REPO: ${{ steps.meta.outputs.repo }}

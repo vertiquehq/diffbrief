@@ -85,6 +85,7 @@ const KNOWN_TYPES = new Set([
   'i18n',
   'dependencies',
   'sarif',
+  'playwright',
   'command',
 ]);
 
@@ -104,9 +105,20 @@ export function impliedRelevant(producer) {
         ? producer.globs
         : ['**/asyncapi.yaml', '**/asyncapi.yml', '**/asyncapi.json'];
     case 'dependencies':
-      return ['**/pom.xml', '**/package-lock.json', ...(producer.lockfiles ?? [])];
+      return [
+        '**/pom.xml',
+        '**/package-lock.json',
+        '**/yarn.lock',
+        '**/pnpm-lock.yaml',
+        '**/Cargo.lock',
+        ...(producer.lockfiles ?? []),
+      ];
     case 'sarif':
       return [producer.baseSarif, producer.headSarif].filter(Boolean);
+    case 'playwright':
+      return producer.resultsDirs?.length
+        ? producer.resultsDirs.map((d) => `${d}/**`)
+        : ['**/test-results/**', '**/playwright-report/**'];
     case 'openapi':
       return ['**/pom.xml', '**/src/main/**'];
     case 'maven-reactor':
@@ -135,6 +147,7 @@ function normalizeProducer(raw, index) {
       oasdiffVersion: raw.oasdiffVersion ?? DEFAULT_OASDIFF_VERSION,
       oasdiffSha256: raw.oasdiffSha256 ?? DEFAULT_OASDIFF_SHA256,
       skipBuild: raw.skipBuild === true,
+      cacheSpecs: raw.cacheSpecs === true,
     };
   }
   if (type === 'asyncapi') {
@@ -161,7 +174,8 @@ function normalizeProducer(raw, index) {
   if (type === 'dependencies') {
     return {
       type: 'dependencies',
-      lockfiles: Array.isArray(raw.lockfiles) ? raw.lockfiles.map(String) : ['package-lock.json'],
+      // null → auto-detect which lockfiles exist on either side
+      lockfiles: Array.isArray(raw.lockfiles) ? raw.lockfiles.map(String) : null,
     };
   }
   if (type === 'sarif') {
@@ -172,6 +186,17 @@ function normalizeProducer(raw, index) {
       breakOnLevels: Array.isArray(raw.breakOnLevels)
         ? raw.breakOnLevels.map(String)
         : ['error', 'critical'],
+    };
+  }
+  if (type === 'playwright') {
+    return {
+      type: 'playwright',
+      resultsDirs: Array.isArray(raw.resultsDirs) ? raw.resultsDirs.map(String) : null,
+      videoGlobs: Array.isArray(raw.videoGlobs) ? raw.videoGlobs.map(String) : null,
+      traceGlobs: Array.isArray(raw.traceGlobs) ? raw.traceGlobs.map(String) : null,
+      maxVideos: raw.maxVideos == null ? 10 : Number(raw.maxVideos),
+      maxTraces: raw.maxTraces == null ? 10 : Number(raw.maxTraces),
+      pathFilter: Array.isArray(raw.pathFilter) ? raw.pathFilter.map(String) : null,
     };
   }
   if (type === 'command') {
