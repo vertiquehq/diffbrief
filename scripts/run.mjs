@@ -20,19 +20,29 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { diffAsyncApi } from './asyncapi-diff.mjs';
 import { dryRunClient, readEvent, reconcile } from './comment.mjs';
 import { hasProducer, loadConfig, producerOfType } from './config.mjs';
+import { diffDependencies } from './dependencies-diff.mjs';
+import { diffI18n } from './i18n-diff.mjs';
 import { extractReactor } from './maven-graph.mjs';
+import { diffMigrations } from './migrations-diff.mjs';
 import { diffModules } from './module-diff.mjs';
 import { apiVerdict, diffOpenApi } from './openapi-diff.mjs';
 import {
+  ASYNCAPI_SECTION,
   BASE_BUILD_FAILED,
+  DEPENDENCIES_SECTION,
+  I18N_SECTION,
+  MIGRATIONS_SECTION,
+  SARIF_SECTION,
   buildComment,
   renderOpenApiMarkdown,
   renderReport,
   renderVerdictBand,
   summaryText,
 } from './report.mjs';
+import { diffSarif } from './sarif-diff.mjs';
 import { stableStringify } from './util.mjs';
 
 const FLAGS = new Set(['dry-run', 'base-build-failed']);
@@ -157,9 +167,13 @@ export function run(options) {
   if (relevant) {
     if (!options.base || !options.head) throw new Error('missing --base or --head');
 
+    let baseModel = null;
+    let headModel = null;
+    if (hasProducer(config, 'maven-reactor') || hasProducer(config, 'dependencies')) {
+      baseModel = extractReactor(options.base, { listDir: options.listDir });
+      headModel = extractReactor(options.head, { listDir: options.listDir });
+    }
     if (hasProducer(config, 'maven-reactor')) {
-      const baseModel = extractReactor(options.base, { listDir: options.listDir });
-      const headModel = extractReactor(options.head, { listDir: options.listDir });
       writeText(path.join(out, 'module-graph-base.json'), stableStringify(baseModel));
       writeText(path.join(out, 'module-graph-head.json'), stableStringify(headModel));
       moduleDiff = diffModules(baseModel, headModel, { nodeCap });
@@ -222,12 +236,87 @@ export function run(options) {
       }
     }
 
+    const pushSection = (title, result) => {
+      if (!result) return;
+      breaking = breaking || Boolean(result.breaking);
+      if (result.markdown?.trim()) {
+        extraSections.push(`## ${title}\n\n${result.markdown.trim()}\n`);
+      }
+    };
+
+    const migrations = producerOfType(config, 'migrations');
+    if (migrations) {
+      pushSection(
+        MIGRATIONS_SECTION,
+        diffMigrations(options.base, options.head, {
+          globs: migrations.globs ?? undefined,
+          breakOnEditedVersioned: migrations.breakOnEditedVersioned,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const i18n = producerOfType(config, 'i18n');
+    if (i18n) {
+      pushSection(
+        I18N_SECTION,
+        diffI18n(options.base, options.head, {
+          globs: i18n.globs ?? undefined,
+          breakOnRemovedKeys: i18n.breakOnRemovedKeys,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const deps = producerOfType(config, 'dependencies');
+    if (deps) {
+      if (!baseModel || !headModel) {
+        baseModel = extractReactor(options.base, { listDir: options.listDir });
+        headModel = extractReactor(options.head, { listDir: options.listDir });
+      }
+      pushSection(
+        DEPENDENCIES_SECTION,
+        diffDependencies({
+          baseModel,
+          headModel,
+          baseRoot: options.base,
+          headRoot: options.head,
+          lockfiles: deps.lockfiles,
+        }),
+      );
+    }
+
+    const asyncapi = producerOfType(config, 'asyncapi');
+    if (asyncapi) {
+      pushSection(
+        ASYNCAPI_SECTION,
+        diffAsyncApi({
+          baseRoot: options.base,
+          headRoot: options.head,
+          globs: asyncapi.globs ?? undefined,
+          specs: asyncapi.specs ?? undefined,
+          bin: options.asyncapiBin,
+          execFile: options.execFile,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const sarif = producerOfType(config, 'sarif');
+    if (sarif) {
+      pushSection(
+        SARIF_SECTION,
+        diffSarif({
+          baseSarif: path.resolve(options.base, sarif.baseSarif),
+          headSarif: path.resolve(options.head, sarif.headSarif),
+          breakOnLevels: sarif.breakOnLevels,
+        }),
+      );
+    }
+
     for (const producer of config.producers.filter((item) => item.type === 'command')) {
       const result = runCommandProducer(producer, options);
-      if (result.markdown.trim()) {
-        extraSections.push(`## ${result.id}\n\n${result.markdown.trim()}\n`);
-      }
-      breaking = breaking || result.breaking;
+      pushSection(result.id, result);
     }
 
     const openApiChecked = Boolean(openApi);

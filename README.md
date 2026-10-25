@@ -38,10 +38,12 @@ JSON only (no extra runtime dependencies). Missing file → Maven + OpenAPI defa
 | Field | Meaning |
 | --- | --- |
 | `relevant` | Globs (`*`, `**`, `?`). If none of the changed paths match, builds are skipped and an existing comment is deleted. |
-| `producers` | Ordered list. Built-ins: `maven-reactor`, `openapi`. Extension: `command`. |
+| `producers` | Ordered list. Built-ins below, plus `command`. |
 | `failOn` | `breaking` (default) or `never`. Failure happens only after the comment, summary, and artifact exist. |
 | `marker` / `title` / `artifact` | Sticky-comment marker, heading, and artifact name. |
 | `nodeCap` | Inline Mermaid node budget (default 60). Over that → DOT (+ SVG when `dot` is on `PATH`). |
+
+Built-in producers: `maven-reactor`, `openapi`, `asyncapi`, `migrations`, `i18n`, `dependencies`, `sarif`. Enabling a producer without an explicit `relevant` list also adds sensible path globs. See [`examples/full-stack.json`](examples/full-stack.json).
 
 ### `maven-reactor`
 
@@ -59,6 +61,26 @@ Parses `pom.xml` files without running Maven. Uniform reactor version bumps fold
 | `oasdiffVersion` / `oasdiffSha256` | Pin the CLI release (checksum verified before extract). |
 
 The oasdiff **GitHub Action is not used**, so specs are not uploaded to oasdiff.com.
+
+### `asyncapi`
+
+Same idea as OpenAPI, via the AsyncAPI CLI (`asyncapi diff`). oasdiff does not support AsyncAPI. Put `asyncapi` on `PATH` (or set `ASYNCAPI_BIN`). Default globs: `**/asyncapi.yaml`, `**/asyncapi.yml`, `**/asyncapi.json`.
+
+### `migrations`
+
+Compares Flyway/Liquibase-style files by path and content hash (no database). Editing an already-versioned `V*` file is a breaking finding.
+
+### `i18n`
+
+Message key add/remove/change in `.properties` and nested JSON locale files. Removed keys are breaking by default.
+
+### `dependencies`
+
+Maven reactor **external** dependency version moves (needs reactor models) plus top-level `package-lock.json` packages.
+
+### `sarif`
+
+Diff two SARIF files and list findings introduced on head. **PMD:** use the official PMD GitHub Action (or `mvn pmd:pmd` + SARIF conversion) to produce base/head reports, then point `baseSarif` / `headSarif` here. Diffbrief does not run PMD. CPD duplication has no SARIF yet — use a `command` producer if you need it. Details: [`BACKLOG.md`](BACKLOG.md).
 
 ### `command`
 

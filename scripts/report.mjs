@@ -23,6 +23,11 @@ export const BASE_BUILD_FAILED = 'base build failed, API diff skipped';
 export const SILENT_NOTE = 'No module graph or API changes\n';
 export const OPENAPI_SECTION = 'Did the API contract move?';
 export const MODULE_SECTION = 'What moved in the module graph?';
+export const MIGRATIONS_SECTION = 'Did database migrations change?';
+export const I18N_SECTION = 'Did message keys change?';
+export const DEPENDENCIES_SECTION = 'Did third-party dependencies change?';
+export const ASYNCAPI_SECTION = 'Did the AsyncAPI contract move?';
+export const SARIF_SECTION = 'Were new SAST findings introduced?';
 export const OPENAPI_UNCHANGED = '_Checked — no OpenAPI document changed._';
 export const MODULE_UNCHANGED = '_Checked — module graph unchanged._';
 

@@ -77,9 +77,53 @@ function asArray(value, fallback) {
   return value;
 }
 
+const KNOWN_TYPES = new Set([
+  'maven-reactor',
+  'openapi',
+  'asyncapi',
+  'migrations',
+  'i18n',
+  'dependencies',
+  'sarif',
+  'command',
+]);
+
+/** Globs each producer implies so relevance stays useful when the consumer enables it. */
+export function impliedRelevant(producer) {
+  switch (producer.type) {
+    case 'migrations':
+      return producer.globs?.length
+        ? producer.globs
+        : ['**/db/migration/**', '**/db/migrations/**', '**/flyway/**', '**/liquibase/**'];
+    case 'i18n':
+      return producer.globs?.length
+        ? producer.globs
+        : ['**/messages*.properties', '**/i18n/**', '**/locales/**', '**/lang/**'];
+    case 'asyncapi':
+      return producer.globs?.length
+        ? producer.globs
+        : ['**/asyncapi.yaml', '**/asyncapi.yml', '**/asyncapi.json'];
+    case 'dependencies':
+      return ['**/pom.xml', '**/package-lock.json', ...(producer.lockfiles ?? [])];
+    case 'sarif':
+      return [producer.baseSarif, producer.headSarif].filter(Boolean);
+    case 'openapi':
+      return ['**/pom.xml', '**/src/main/**'];
+    case 'maven-reactor':
+      return ['**/pom.xml'];
+    default:
+      return [];
+  }
+}
+
 function normalizeProducer(raw, index) {
   if (!raw || typeof raw !== 'object') throw new Error(`producers[${index}] must be an object`);
   const type = raw.type;
+  if (!KNOWN_TYPES.has(type)) {
+    throw new Error(
+      `producers[${index}].type must be one of ${[...KNOWN_TYPES].sort().join(', ')}`,
+    );
+  }
   if (type === 'maven-reactor') return { type: 'maven-reactor' };
   if (type === 'openapi') {
     return {
@@ -93,6 +137,43 @@ function normalizeProducer(raw, index) {
       skipBuild: raw.skipBuild === true,
     };
   }
+  if (type === 'asyncapi') {
+    return {
+      type: 'asyncapi',
+      globs: Array.isArray(raw.globs) ? raw.globs.map(String) : null,
+      specs: Array.isArray(raw.specs) ? raw.specs.map(String) : null,
+    };
+  }
+  if (type === 'migrations') {
+    return {
+      type: 'migrations',
+      globs: Array.isArray(raw.globs) ? raw.globs.map(String) : null,
+      breakOnEditedVersioned: raw.breakOnEditedVersioned !== false,
+    };
+  }
+  if (type === 'i18n') {
+    return {
+      type: 'i18n',
+      globs: Array.isArray(raw.globs) ? raw.globs.map(String) : null,
+      breakOnRemovedKeys: raw.breakOnRemovedKeys !== false,
+    };
+  }
+  if (type === 'dependencies') {
+    return {
+      type: 'dependencies',
+      lockfiles: Array.isArray(raw.lockfiles) ? raw.lockfiles.map(String) : ['package-lock.json'],
+    };
+  }
+  if (type === 'sarif') {
+    return {
+      type: 'sarif',
+      baseSarif: String(raw.baseSarif ?? 'diffbrief-out/base.sarif'),
+      headSarif: String(raw.headSarif ?? 'diffbrief-out/head.sarif'),
+      breakOnLevels: Array.isArray(raw.breakOnLevels)
+        ? raw.breakOnLevels.map(String)
+        : ['error', 'critical'],
+    };
+  }
   if (type === 'command') {
     if (!raw.run) throw new Error(`producers[${index}].run is required for type command`);
     return {
@@ -102,7 +183,7 @@ function normalizeProducer(raw, index) {
       shell: raw.shell === true,
     };
   }
-  throw new Error(`producers[${index}].type must be maven-reactor, openapi, or command`);
+  throw new Error(`producers[${index}].type is not implemented: ${type}`);
 }
 
 export function normalizeConfig(raw = {}) {
@@ -116,13 +197,22 @@ export function normalizeConfig(raw = {}) {
   const producers = asArray(raw.producers, DEFAULT_PRODUCERS).map(normalizeProducer);
   const nodeCap = raw.nodeCap == null ? DEFAULT_NODE_CAP : Number(raw.nodeCap);
   if (!Number.isInteger(nodeCap) || nodeCap < 1) throw new Error('nodeCap must be a positive integer');
+  const relevantExplicit = raw.relevant != null;
+  const relevant = asArray(raw.relevant, DEFAULT_RELEVANT).map(String);
+  if (!relevantExplicit) {
+    for (const producer of producers) {
+      for (const glob of impliedRelevant(producer)) {
+        if (glob && !relevant.includes(glob)) relevant.push(glob);
+      }
+    }
+  }
   return {
     marker: String(raw.marker ?? DEFAULT_MARKER),
     title: String(raw.title ?? DEFAULT_TITLE),
     artifact: String(raw.artifact ?? DEFAULT_ARTIFACT),
     nodeCap,
     failOn,
-    relevant: asArray(raw.relevant, DEFAULT_RELEVANT).map(String),
+    relevant,
     producers,
   };
 }
