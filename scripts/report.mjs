@@ -4,19 +4,16 @@
 /**
  * Pull request review report and the sticky comment derived from it.
  *
- * The comment starts with the marker, then a short header, then the report.
- * It stays within 60,000 characters by dropping whole sections or spec
- * blocks and pointing at the job summary and artifact. The summary receives
- * the full report, truncated only past about 900 KiB.
- *
- * An oasdiff changelog drops its top-level title and shifts the remaining
- * headings down so they sit under the spec heading. The changelog is wrapped
- * in a details block. Error-level breaking changes stay outside that block.
+ * The comment starts with the marker, an optional API verdict band (inspired by
+ * human-review's seal: one line a reviewer reads once), then section headings
+ * phrased as the question each block answers. Changelogs stay in details;
+ * ERR-level findings stay outside those blocks.
  */
 
 import { inlineCode } from './util.mjs';
 
 import { DEFAULT_ARTIFACT, DEFAULT_MARKER, DEFAULT_TITLE } from './config.mjs';
+import { VERDICT, VERDICT_HEADLINE } from './openapi-diff.mjs';
 
 export const COMMENT_MARKER = DEFAULT_MARKER;
 export const COMMENT_TITLE = DEFAULT_TITLE;
@@ -24,6 +21,15 @@ export const COMMENT_CHAR_LIMIT = 60000;
 export const SUMMARY_BYTE_LIMIT = 900 * 1024;
 export const BASE_BUILD_FAILED = 'base build failed, API diff skipped';
 export const SILENT_NOTE = 'No module graph or API changes\n';
+export const OPENAPI_SECTION = 'Did the API contract move?';
+export const MODULE_SECTION = 'What moved in the module graph?';
+export const MIGRATIONS_SECTION = 'Did database migrations change?';
+export const I18N_SECTION = 'Did message keys change?';
+export const DEPENDENCIES_SECTION = 'Did third-party dependencies change?';
+export const ASYNCAPI_SECTION = 'Did the AsyncAPI contract move?';
+export const SARIF_SECTION = 'Were new SAST findings introduced?';
+export const OPENAPI_UNCHANGED = '_Checked — no OpenAPI document changed._';
+export const MODULE_UNCHANGED = '_Checked — module graph unchanged._';
 
 export function truncationPointer(artifact = DEFAULT_ARTIFACT) {
   return `Truncated. The full report is in the job summary and the \`${artifact}\` artifact.`;
@@ -83,22 +89,61 @@ function renderSpec(section, openDetails) {
   const parts = [heading];
   if (section.breaking) parts.push(`\n${breakingBlock(section.breakingText)}\n`);
   const body = demoteChangelog(section.markdown);
-  const count = changedOperationCount(section.markdown);
+  const count = section.summary?.endpoints || changedOperationCount(section.markdown);
   parts.push(`\n${changelogDetails(section.path, body, count, openDetails)}`);
   return parts.join('');
 }
 
-export function renderOpenApiMarkdown(diff, { baseBuildFailed = false } = {}) {
+function countPhrase(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/**
+ * One-line seal a reviewer reads first. Same idea as human-review's API verdict band.
+ */
+export function renderVerdictBand(verdict) {
+  if (!verdict) return '';
+  const kind = verdict.kind ?? VERDICT.NOT_RUN;
+  const headline = verdict.headline ?? VERDICT_HEADLINE[kind] ?? kind;
+  const bits = [];
+  if (verdict.endpoints) bits.push(countPhrase(verdict.endpoints, 'endpoint changed', 'endpoints changed'));
+  if (verdict.newDocs) bits.push(countPhrase(verdict.newDocs, 'document added', 'documents added'));
+  if (verdict.removedDocs) bits.push(countPhrase(verdict.removedDocs, 'document removed', 'documents removed'));
+  if (verdict.err) bits.push(countPhrase(verdict.err, 'breaking', 'breaking'));
+  if (verdict.warn) bits.push(countPhrase(verdict.warn, 'possibly breaking', 'possibly breaking'));
+  const who = 'checked by [oasdiff](https://github.com/oasdiff/oasdiff)';
+  const detail = bits.length ? `${bits.join(' · ')} · ${who}` : who;
+  return `> **${headline}** · ${detail}\n`;
+}
+
+export function renderOpenApiMarkdown(diff, { baseBuildFailed = false, includeUnchanged = false } = {}) {
   if (baseBuildFailed) return `${BASE_BUILD_FAILED}\n`;
-  if (!diff || diff.sections.length === 0) return '';
+  if (!diff) return '';
+  if (diff.sections.length === 0) {
+    return includeUnchanged ? `${OPENAPI_UNCHANGED}\n` : '';
+  }
   const openDetails = diff.sections.length === 1 && diff.sections[0].kind === 'changed';
   return diff.sections.map((section) => renderSpec(section, openDetails)).join('\n');
 }
 
-export function renderReport({ openApiMarkdown = '', moduleMarkdown = '' } = {}) {
+export function renderReport({
+  openApiMarkdown = '',
+  moduleMarkdown = '',
+  verdict = null,
+  moduleChecked = false,
+  openApiChecked = false,
+} = {}) {
   const sections = [];
-  if (openApiMarkdown.trim()) sections.push(`## OpenAPI changes\n\n${openApiMarkdown.trim()}\n`);
-  if (moduleMarkdown.trim()) sections.push(`## Module graph changes\n\n${moduleMarkdown.trim()}\n`);
+  if (verdict) {
+    const band = renderVerdictBand(verdict).trim();
+    if (band) sections.push(`${band}\n`);
+  }
+  const openApiBody = openApiMarkdown.trim()
+    || (openApiChecked ? OPENAPI_UNCHANGED : '');
+  if (openApiBody) sections.push(`## ${OPENAPI_SECTION}\n\n${openApiBody}\n`);
+  const moduleBody = moduleMarkdown.trim()
+    || (moduleChecked ? MODULE_UNCHANGED : '');
+  if (moduleBody) sections.push(`## ${MODULE_SECTION}\n\n${moduleBody}\n`);
   return sections.join('\n');
 }
 

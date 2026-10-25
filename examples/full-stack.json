@@ -1,0 +1,21 @@
+{
+  "failOn": "breaking",
+  "producers": [
+    { "type": "maven-reactor" },
+    {
+      "type": "openapi",
+      "discover": "swagger-outputFileName",
+      "specsGlob": "**/target/classes/openapi.yaml"
+    },
+    { "type": "asyncapi" },
+    { "type": "migrations" },
+    { "type": "i18n" },
+    { "type": "dependencies" },
+    {
+      "type": "sarif",
+      "baseSarif": "diffbrief-out/base.sarif",
+      "headSarif": "diffbrief-out/head.sarif",
+      "breakOnLevels": ["error", "critical"]
+    }
+  ]
+}

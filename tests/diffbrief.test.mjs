@@ -432,7 +432,7 @@ describe('module graph limits and parsing', () => {
 describe('report text', () => {
   it('truncates the comment on a section boundary and keeps the marker', () => {
     const spec = (index) => `### spec-${index}\n\n${'x'.repeat(4000)}\n`;
-    const body = `## OpenAPI changes\n\n${Array.from({ length: 20 }, (_, index) => spec(index)).join('\n')}`;
+    const body = `## Did the API contract move?\n\n${Array.from({ length: 20 }, (_, index) => spec(index)).join('\n')}`;
     assert.ok(body.length > COMMENT_CHAR_LIMIT);
     const comment = buildComment(body);
     assert.equal(comment.split('\n')[0], COMMENT_MARKER);
@@ -446,12 +446,12 @@ describe('report text', () => {
   });
 
   it('truncates the job summary on a section boundary', () => {
-    const text = `## OpenAPI changes\n\nok\n\n## Module graph changes\n\n${'z'.repeat(400)}\n`;
+    const text = `## Did the API contract move?\n\nok\n\n## What moved in the module graph?\n\n${'z'.repeat(400)}\n`;
     const summary = summaryText(text, 180);
     assert.ok(Buffer.byteLength(summary) <= 180);
     assert.match(summary, /diffbrief/);
-    assert.match(summary, /OpenAPI changes/);
-    assert.doesNotMatch(summary, /Module graph changes/);
+    assert.match(summary, /Did the API contract move/);
+    assert.doesNotMatch(summary, /What moved in the module graph/);
   });
 
   it('splits the report on headings', () => {
@@ -482,20 +482,29 @@ import { appendFileSync, readFileSync } from 'node:fs';
 const cmd = process.argv[2];
 const base = process.argv[3];
 const head = process.argv[4];
-appendFileSync(${JSON.stringify(log)}, cmd + '\\n');
+const formatIdx = process.argv.indexOf('--format');
+const format = formatIdx === -1 ? 'text' : process.argv[formatIdx + 1];
+appendFileSync(${JSON.stringify(log)}, cmd + ':' + format + '\\n');
 const baseText = readFileSync(base, 'utf8');
 const headText = readFileSync(head, 'utf8');
 if (baseText === headText || (baseText.includes('UNCHANGED') && headText.includes('UNCHANGED'))) {
-  if (cmd === 'changelog') process.stdout.write('# API Changelog 1.0.0 vs. 1.0.0\\n\\nNo changes detected\\n');
+  if (cmd === 'changelog' && format === 'json') process.stdout.write('[]\\n');
+  else if (cmd === 'changelog') process.stdout.write('# API Changelog 1.0.0 vs. 1.0.0\\n\\nNo changes detected\\n');
+  process.exit(0);
+}
+if (cmd === 'changelog' && format === 'json') {
+  process.stdout.write(JSON.stringify([{
+    id: 'api-path-removed-without-deprecation',
+    text: 'api path removed without deprecation',
+    level: 3,
+    operation: 'GET',
+    path: '/hello',
+  }]) + '\\n');
   process.exit(0);
 }
 if (cmd === 'changelog') {
   process.stdout.write('# API Changelog 1.0.0 vs. 1.0.0\\n\\n## API Changes\\n\\n### GET /hello\\n- removed the path\\n');
   process.exit(0);
-}
-if (cmd === 'breaking') {
-  process.stdout.write('1 changes: 1 error, 0 warning, 0 info\\n');
-  process.exit(1);
 }
 process.exit(2);
 `);
@@ -524,15 +533,25 @@ process.exit(2);
     });
     const diff = diffOpenApi({ baseDir: base, headDir: head, bin });
     const calls = readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
-    assert.deepEqual(calls, ['changelog', 'breaking', 'changelog', 'breaking']);
+    assert.deepEqual(calls, [
+      'changelog:json',
+      'changelog:markdown',
+      'changelog:json',
+      'changelog:markdown',
+    ]);
     assert.equal(diff.breaking, true);
+    assert.equal(diff.verdict.kind, 'incompatible');
     assert.deepEqual(diff.sections.map((section) => section.path), ['changed/openapi.yaml', 'fresh/openapi.yaml', 'gone/openapi.yaml']);
     assert.match(diff.sections[0].markdown, /removed the path/);
     assert.equal(diff.sections[1].markdown, 'new API document');
     assert.equal(diff.sections[2].markdown, 'removed API document');
     assert.equal(diff.runs.find((entry) => entry.path === 'same/openapi.yaml').kind, 'unchanged');
-    const rendered = renderReport({ openApiMarkdown: reportMod.renderOpenApiMarkdown(diff) });
-    assert.match(rendered, /## OpenAPI changes/);
+    const rendered = renderReport({
+      openApiMarkdown: reportMod.renderOpenApiMarkdown(diff),
+      verdict: diff.verdict,
+    });
+    assert.match(rendered, /Not backward compatible/);
+    assert.match(rendered, /## Did the API contract move\?/);
     assert.doesNotMatch(rendered, /same\/openapi\.yaml/);
     assert.match(rendered, /Breaking changes \(ERR\)/);
     assert.match(rendered, /#### API Changes/);
@@ -591,6 +610,7 @@ process.exit(2);
       bin,
     });
     assert.equal(diff.breaking, true);
+    assert.equal(diff.verdict.kind, 'incompatible');
     assert.equal(diff.runs[0].breakingStatus, 1);
     assert.match(diff.sections[0].markdown, /api path removed/i);
     const rendered = reportMod.renderOpenApiMarkdown(diff);
@@ -599,10 +619,12 @@ process.exit(2);
     assert.match(rendered, /api path removed without deprecation/);
     assert.match(rendered, /##### POST \/hello/);
     assert.doesNotMatch(rendered, /# API Changelog/);
+    assert.match(reportMod.renderVerdictBand(diff.verdict), /Not backward compatible/);
     const same = path.join(FIXTURES, 'openapi', 'base');
     const unchanged = diffOpenApi({ baseDir: same, headDir: same, bin });
     assert.equal(unchanged.breaking, false);
     assert.equal(unchanged.sections.length, 0);
     assert.equal(unchanged.runs[0].kind, 'unchanged');
+    assert.equal(unchanged.verdict.kind, 'no_changes');
   });
 });

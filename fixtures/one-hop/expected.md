@@ -1,4 +1,4 @@
-## Module graph changes
+## What moved in the module graph?
 
 ```mermaid
 flowchart LR

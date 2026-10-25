@@ -20,12 +20,29 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { diffAsyncApi } from './asyncapi-diff.mjs';
 import { dryRunClient, readEvent, reconcile } from './comment.mjs';
 import { hasProducer, loadConfig, producerOfType } from './config.mjs';
+import { diffDependencies } from './dependencies-diff.mjs';
+import { diffI18n } from './i18n-diff.mjs';
 import { extractReactor } from './maven-graph.mjs';
+import { diffMigrations } from './migrations-diff.mjs';
 import { diffModules } from './module-diff.mjs';
-import { diffOpenApi } from './openapi-diff.mjs';
-import { BASE_BUILD_FAILED, buildComment, renderOpenApiMarkdown, renderReport, summaryText } from './report.mjs';
+import { apiVerdict, diffOpenApi } from './openapi-diff.mjs';
+import {
+  ASYNCAPI_SECTION,
+  BASE_BUILD_FAILED,
+  DEPENDENCIES_SECTION,
+  I18N_SECTION,
+  MIGRATIONS_SECTION,
+  SARIF_SECTION,
+  buildComment,
+  renderOpenApiMarkdown,
+  renderReport,
+  renderVerdictBand,
+  summaryText,
+} from './report.mjs';
+import { diffSarif } from './sarif-diff.mjs';
 import { stableStringify } from './util.mjs';
 
 const FLAGS = new Set(['dry-run', 'base-build-failed']);
@@ -150,9 +167,13 @@ export function run(options) {
   if (relevant) {
     if (!options.base || !options.head) throw new Error('missing --base or --head');
 
+    let baseModel = null;
+    let headModel = null;
+    if (hasProducer(config, 'maven-reactor') || hasProducer(config, 'dependencies')) {
+      baseModel = extractReactor(options.base, { listDir: options.listDir });
+      headModel = extractReactor(options.head, { listDir: options.listDir });
+    }
     if (hasProducer(config, 'maven-reactor')) {
-      const baseModel = extractReactor(options.base, { listDir: options.listDir });
-      const headModel = extractReactor(options.head, { listDir: options.listDir });
       writeText(path.join(out, 'module-graph-base.json'), stableStringify(baseModel));
       writeText(path.join(out, 'module-graph-head.json'), stableStringify(headModel));
       moduleDiff = diffModules(baseModel, headModel, { nodeCap });
@@ -164,7 +185,12 @@ export function run(options) {
     const openapiProducer = producerOfType(config, 'openapi');
     if (openapiProducer) {
       if (options.baseBuildFailed) {
-        openApi = { breaking: false, sections: [], runs: [] };
+        openApi = {
+          breaking: false,
+          sections: [],
+          runs: [],
+          verdict: apiVerdict(null, { baseBuildFailed: true }),
+        };
       } else {
         if (!options.baseSpecs || !options.headSpecs) {
           throw new Error('openapi producer requires --base-specs and --head-specs');
@@ -185,47 +211,139 @@ export function run(options) {
             entry.changelog.endsWith('\n') || entry.changelog === '' ? entry.changelog : `${entry.changelog}\n`;
           writeText(path.join(oasDir, `${name}.changelog.md`), changelog === '' ? '\n' : changelog);
           writeText(path.join(oasDir, `${name}.breaking.txt`), `exit: ${entry.breakingStatus}\n${entry.breakingText}`);
+          if (entry.changes) {
+            writeText(path.join(oasDir, `${name}.changelog.json`), `${stableStringify(entry.changes)}\n`);
+          }
         }
       }
       writeText(
         path.join(out, 'openapi-diff.json'),
         stableStringify({
           breaking: openApi.breaking,
-          entries: openApi.runs.map(({ path: specPath, kind, changelogStatus, breakingStatus }) => ({
+          verdict: openApi.verdict,
+          entries: openApi.runs.map(({ path: specPath, kind, changelogStatus, breakingStatus, summary }) => ({
             breakingStatus,
             changelogStatus,
             kind,
             path: specPath,
+            summary: summary ?? null,
           })),
           ...(options.baseBuildFailed ? { note: BASE_BUILD_FAILED } : {}),
+        }),
+      );
+      if (openApi.verdict) {
+        writeText(path.join(out, 'openapi-verdict.md'), `${renderVerdictBand(openApi.verdict)}\n`);
+      }
+    }
+
+    const pushSection = (title, result) => {
+      if (!result) return;
+      breaking = breaking || Boolean(result.breaking);
+      if (result.markdown?.trim()) {
+        extraSections.push(`## ${title}\n\n${result.markdown.trim()}\n`);
+      }
+    };
+
+    const migrations = producerOfType(config, 'migrations');
+    if (migrations) {
+      pushSection(
+        MIGRATIONS_SECTION,
+        diffMigrations(options.base, options.head, {
+          globs: migrations.globs ?? undefined,
+          breakOnEditedVersioned: migrations.breakOnEditedVersioned,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const i18n = producerOfType(config, 'i18n');
+    if (i18n) {
+      pushSection(
+        I18N_SECTION,
+        diffI18n(options.base, options.head, {
+          globs: i18n.globs ?? undefined,
+          breakOnRemovedKeys: i18n.breakOnRemovedKeys,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const deps = producerOfType(config, 'dependencies');
+    if (deps) {
+      if (!baseModel || !headModel) {
+        baseModel = extractReactor(options.base, { listDir: options.listDir });
+        headModel = extractReactor(options.head, { listDir: options.listDir });
+      }
+      pushSection(
+        DEPENDENCIES_SECTION,
+        diffDependencies({
+          baseModel,
+          headModel,
+          baseRoot: options.base,
+          headRoot: options.head,
+          lockfiles: deps.lockfiles,
+        }),
+      );
+    }
+
+    const asyncapi = producerOfType(config, 'asyncapi');
+    if (asyncapi) {
+      pushSection(
+        ASYNCAPI_SECTION,
+        diffAsyncApi({
+          baseRoot: options.base,
+          headRoot: options.head,
+          globs: asyncapi.globs ?? undefined,
+          specs: asyncapi.specs ?? undefined,
+          bin: options.asyncapiBin,
+          execFile: options.execFile,
+          listDir: options.listDir,
+        }),
+      );
+    }
+
+    const sarif = producerOfType(config, 'sarif');
+    if (sarif) {
+      pushSection(
+        SARIF_SECTION,
+        diffSarif({
+          baseSarif: path.resolve(options.base, sarif.baseSarif),
+          headSarif: path.resolve(options.head, sarif.headSarif),
+          breakOnLevels: sarif.breakOnLevels,
         }),
       );
     }
 
     for (const producer of config.producers.filter((item) => item.type === 'command')) {
       const result = runCommandProducer(producer, options);
-      if (result.markdown.trim()) {
-        extraSections.push(`## ${result.id}\n\n${result.markdown.trim()}\n`);
-      }
-      breaking = breaking || result.breaking;
+      pushSection(result.id, result);
     }
 
-    const parts = [];
-    if (openApi) {
-      const openApiMarkdown = renderOpenApiMarkdown(openApi, { baseBuildFailed: options.baseBuildFailed });
-      if (openApiMarkdown.trim()) parts.push(`## OpenAPI changes\n\n${openApiMarkdown.trim()}\n`);
+    const openApiChecked = Boolean(openApi);
+    const moduleChecked = Boolean(moduleDiff);
+    const openApiMarkdown = openApi
+      ? renderOpenApiMarkdown(openApi, { baseBuildFailed: options.baseBuildFailed })
+      : '';
+    const moduleMarkdown = moduleDiff?.markdown ?? '';
+    report = renderReport({
+      openApiMarkdown,
+      moduleMarkdown,
+      verdict: openApi?.verdict ?? null,
+      openApiChecked,
+      moduleChecked,
+    });
+    if (extraSections.length) {
+      report = [report.trimEnd(), ...extraSections].filter(Boolean).join('\n\n') + '\n';
     }
-    if (moduleDiff?.markdown?.trim()) {
-      parts.push(`## Module graph changes\n\n${moduleDiff.markdown.trim()}\n`);
-    }
-    parts.push(...extraSections);
-    report = parts.join('\n');
-    // Keep renderReport available for tests that pass markdown pieces directly.
-    if (!parts.length && (moduleDiff || openApi)) {
-      report = renderReport({
-        openApiMarkdown: openApi ? renderOpenApiMarkdown(openApi, { baseBuildFailed: options.baseBuildFailed }) : '',
-        moduleMarkdown: moduleDiff?.markdown ?? '',
-      });
+    // A report that is only "checked — unchanged" stamps stays silent for the sticky comment.
+    if (
+      !moduleMarkdown.trim()
+      && !openApiMarkdown.trim()
+      && !extraSections.length
+      && !options.baseBuildFailed
+      && !(openApi?.verdict && openApi.verdict.kind !== 'no_changes' && openApi.verdict.kind !== 'not_run')
+    ) {
+      report = '';
     }
   }
 

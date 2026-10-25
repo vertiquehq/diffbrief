@@ -38,10 +38,12 @@ JSON only (no extra runtime dependencies). Missing file → Maven + OpenAPI defa
 | Field | Meaning |
 | --- | --- |
 | `relevant` | Globs (`*`, `**`, `?`). If none of the changed paths match, builds are skipped and an existing comment is deleted. |
-| `producers` | Ordered list. Built-ins: `maven-reactor`, `openapi`. Extension: `command`. |
+| `producers` | Ordered list. Built-ins below, plus `command`. |
 | `failOn` | `breaking` (default) or `never`. Failure happens only after the comment, summary, and artifact exist. |
 | `marker` / `title` / `artifact` | Sticky-comment marker, heading, and artifact name. |
 | `nodeCap` | Inline Mermaid node budget (default 60). Over that → DOT (+ SVG when `dot` is on `PATH`). |
+
+Built-in producers: `maven-reactor`, `openapi`, `asyncapi`, `migrations`, `i18n`, `dependencies`, `sarif`. Enabling a producer without an explicit `relevant` list also adds sensible path globs. See [`examples/full-stack.json`](examples/full-stack.json).
 
 ### `maven-reactor`
 
@@ -59,6 +61,26 @@ Parses `pom.xml` files without running Maven. Uniform reactor version bumps fold
 | `oasdiffVersion` / `oasdiffSha256` | Pin the CLI release (checksum verified before extract). |
 
 The oasdiff **GitHub Action is not used**, so specs are not uploaded to oasdiff.com.
+
+### `asyncapi`
+
+Same idea as OpenAPI, via the AsyncAPI CLI (`asyncapi diff`). oasdiff does not support AsyncAPI. Put `asyncapi` on `PATH` (or set `ASYNCAPI_BIN`). Default globs: `**/asyncapi.yaml`, `**/asyncapi.yml`, `**/asyncapi.json`.
+
+### `migrations`
+
+Compares Flyway/Liquibase-style files by path and content hash (no database). Editing an already-versioned `V*` file is a breaking finding.
+
+### `i18n`
+
+Message key add/remove/change in `.properties` and nested JSON locale files. Removed keys are breaking by default.
+
+### `dependencies`
+
+Maven reactor **external** dependency version moves (needs reactor models) plus top-level `package-lock.json` packages.
+
+### `sarif`
+
+Diff two SARIF files and list findings introduced on head. **PMD:** use the official PMD GitHub Action (or `mvn pmd:pmd` + SARIF conversion) to produce base/head reports, then point `baseSarif` / `headSarif` here. Diffbrief does not run PMD. CPD duplication has no SARIF yet — use a `command` producer if you need it. Details: [`BACKLOG.md`](BACKLOG.md).
 
 ### `command`
 
@@ -97,6 +119,25 @@ node --test tests/*.test.mjs
 ```
 
 `UPDATE_GOLDEN=1` rewrites fixture expectations under `fixtures/`. The real `oasdiff` cases run when `oasdiff` is on `PATH` (or `OASDIFF_BIN` points at it).
+
+## Design notes (human-review)
+
+diffbrief is a CI sticky-comment action, not a clone of
+[human-review](https://github.com/victorrentea/human-review). That project’s review page
+still shapes several choices here:
+
+- **One question per section** — headings ask what the reviewer came for
+  (`Did the API contract move?`, `What moved in the module graph?`).
+- **Verdict first** — a one-line oasdiff seal (compatible / not / did not move) before the
+  details, the way their API tab opens with a band.
+- **One differ** — oasdiff only; no second home-grown OpenAPI classifier (see their
+  [differ eval](https://github.com/victorrentea/human-review/blob/main/skills/human-review/reference/openapi-differ-eval.md)).
+- **No upload** — never `oasdiff --open`; external `$ref` fetches are disabled.
+- **Checked, not forgotten** — when a producer runs and finds nothing beside other
+  changes, the section can say it was checked (full “unchanged only” runs stay silent so
+  the sticky comment is removed).
+
+Larger ideas that still fit the product live in [`BACKLOG.md`](BACKLOG.md).
 
 ## Runtime cost
 
