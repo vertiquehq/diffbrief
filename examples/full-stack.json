@@ -5,7 +5,8 @@
     {
       "type": "openapi",
       "discover": "swagger-outputFileName",
-      "specsGlob": "**/target/classes/openapi.yaml"
+      "specsGlob": "**/target/classes/openapi.yaml",
+      "cacheSpecs": true
     },
     { "type": "asyncapi" },
     { "type": "migrations" },
@@ -16,6 +17,12 @@
       "baseSarif": "diffbrief-out/base.sarif",
       "headSarif": "diffbrief-out/head.sarif",
       "breakOnLevels": ["error", "critical"]
+    },
+    {
+      "type": "playwright",
+      "resultsDirs": ["test-results"],
+      "maxVideos": 10,
+      "maxTraces": 10
     }
   ]
 }

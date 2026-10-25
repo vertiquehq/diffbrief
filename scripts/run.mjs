@@ -29,12 +29,14 @@ import { extractReactor } from './maven-graph.mjs';
 import { diffMigrations } from './migrations-diff.mjs';
 import { diffModules } from './module-diff.mjs';
 import { apiVerdict, diffOpenApi } from './openapi-diff.mjs';
+import { packagePlaywright } from './playwright-diff.mjs';
 import {
   ASYNCAPI_SECTION,
   BASE_BUILD_FAILED,
   DEPENDENCIES_SECTION,
   I18N_SECTION,
   MIGRATIONS_SECTION,
+  PLAYWRIGHT_SECTION,
   SARIF_SECTION,
   buildComment,
   renderOpenApiMarkdown,
@@ -310,6 +312,24 @@ export function run(options) {
           baseSarif: path.resolve(options.base, sarif.baseSarif),
           headSarif: path.resolve(options.head, sarif.headSarif),
           breakOnLevels: sarif.breakOnLevels,
+        }),
+      );
+    }
+
+    const playwright = producerOfType(config, 'playwright');
+    if (playwright) {
+      pushSection(
+        PLAYWRIGHT_SECTION,
+        packagePlaywright({
+          headRoot: options.head,
+          outDir: out,
+          resultsDirs: playwright.resultsDirs ?? undefined,
+          videoGlobs: playwright.videoGlobs ?? undefined,
+          traceGlobs: playwright.traceGlobs ?? undefined,
+          maxVideos: playwright.maxVideos,
+          maxTraces: playwright.maxTraces,
+          pathFilter: playwright.pathFilter ?? undefined,
+          listDir: options.listDir,
         }),
       );
     }

@@ -14,6 +14,14 @@ SPDX-License-Identifier: EUPL-1.2
 | `dependencies` | Maven reactor externals + `package-lock.json` top-level packages |
 | `asyncapi` | `asyncapi diff` (CLI); oasdiff does **not** support AsyncAPI |
 | `sarif` | New SAST findings vs base (feeds from PMD/CodeQL/SpotBugs SARIF) |
+| `playwright` | Package recorded videos/traces into the artifact + comment links |
+| `dependencies` | Maven externals + npm / yarn / pnpm / Cargo lockfiles |
+
+## CI artifact reuse (supported)
+
+- Action inputs: `cache-specs`, `head-specs-dir`, `base-specs-dir`, `reuse-head-artifact`, `reuse-base-artifact`, `reuse-playwright-artifact`
+- Config: `openapi.cacheSpecs: true`
+- Helper: `scripts/download-workflow-artifact.sh` + SHA-keyed `actions/cache` for OpenAPI trees
 
 ## SAST / PMD — investigation notes
 
@@ -54,11 +62,11 @@ where the script reads CI-produced assets under `DIFFBRIEF_HEAD` / artifact down
 
 ## Likely next
 
-- HTML review page in the artifact (verdict + sections + media)
-- Reuse CI OpenAPI / SARIF artifacts (skip duplicate Maven / analyzer runs)
-- Playwright demo pack (tagged tests → screenshots / video links)
-- pnpm / yarn / Cargo / Gradle lockfile support in `dependencies`
+- HTML review page in the artifact (verdict + sections + embedded media)
+- Filter Playwright media by changed test files / `@diffbrief` tags
+- Gradle lockfile / `pnpm-lock` importers-only mode
 - Optional `traces` built-in once a minimal asset layout is frozen
+- Same-workflow `actions/download-artifact` helper (today: cross-run via `gh api`)
 
 ## Deliberately not in scope
 
