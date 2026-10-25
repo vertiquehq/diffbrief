@@ -1,0 +1,49 @@
+# Example consumer workflow. Copy into .github/workflows/diffbrief.yml
+# and adjust the runner, JDK, and cache steps for your repository.
+#
+# The action repository must be public, or this repository must be private
+# in the same organization with Actions access to private repositories.
+
+name: diffbrief
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diffbrief-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Structural diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # Only needed when the config enables maven-reactor or an OpenAPI
+      # discover/build that runs Maven.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: vertiquehq/diffbrief@v1
+        with:
+          config: .github/diffbrief.json
+          token: ${{ github.token }}

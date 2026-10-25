@@ -1,0 +1,20 @@
+{
+  "marker": "<!-- diffbrief -->",
+  "title": "Pull request review",
+  "artifact": "diffbrief",
+  "nodeCap": 60,
+  "failOn": "breaking",
+  "relevant": [
+    "**/pom.xml",
+    "**/src/main/**",
+    ".github/diffbrief.json"
+  ],
+  "producers": [
+    { "type": "maven-reactor" },
+    {
+      "type": "openapi",
+      "discover": "swagger-outputFileName",
+      "specsGlob": "**/target/classes/openapi.yaml"
+    }
+  ]
+}

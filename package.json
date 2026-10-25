@@ -1,0 +1,12 @@
+{
+  "name": "diffbrief",
+  "private": true,
+  "type": "module",
+  "description": "Configurable structural pull-request diff comments",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

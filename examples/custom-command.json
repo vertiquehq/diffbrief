@@ -1,0 +1,15 @@
+{
+  "relevant": [
+    "infra/**",
+    "scripts/diffbrief-terraform.sh",
+    ".github/diffbrief.json"
+  ],
+  "failOn": "never",
+  "producers": [
+    {
+      "type": "command",
+      "id": "Terraform plan",
+      "run": "scripts/diffbrief-terraform.sh"
+    }
+  ]
+}

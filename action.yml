@@ -1,0 +1,163 @@
+# SPDX-FileCopyrightText: 2026 Koivisto Capital Oy
+# SPDX-License-Identifier: EUPL-1.2
+name: diffbrief
+description: >
+  Sticky pull-request comment with configurable structural diffs (Maven
+  reactor graph, OpenAPI via oasdiff, or custom command producers).
+author: Koivisto Capital Oy
+
+inputs:
+  config:
+    description: Path to the consumer JSON config (relative to the head checkout).
+    required: false
+    default: .github/diffbrief.json
+  token:
+    description: Token used to create or update the sticky pull-request comment.
+    required: true
+  base-sha:
+    description: Base branch tip SHA (defaults to github.event.pull_request.base.sha).
+    required: false
+  head-sha:
+    description: Pull request head SHA (defaults to github.event.pull_request.head.sha).
+    required: false
+  pr-number:
+    description: Pull request number (defaults to github.event.pull_request.number).
+    required: false
+  repository:
+    description: owner/name (defaults to github.repository).
+    required: false
+  out-dir:
+    description: Directory for report artifacts under the workspace.
+    required: false
+    default: diffbrief-out
+  upload-artifact:
+    description: Upload the out-dir as a workflow artifact.
+    required: false
+    default: 'true'
+
+outputs:
+  relevant:
+    description: Whether any configured relevant path changed.
+    value: ${{ steps.scope.outputs.relevant }}
+  breaking:
+    description: Whether a producer reported a breaking change.
+    value: ${{ steps.publish.outputs.breaking }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve SHAs and paths
+      id: meta
+      shell: bash
+      env:
+        INPUT_BASE_SHA: ${{ inputs.base-sha }}
+        INPUT_HEAD_SHA: ${{ inputs.head-sha }}
+        INPUT_PR: ${{ inputs.pr-number }}
+        INPUT_REPO: ${{ inputs.repository }}
+        INPUT_OUT: ${{ inputs.out-dir }}
+        INPUT_CONFIG: ${{ inputs.config }}
+      run: |
+        echo "base-sha=${INPUT_BASE_SHA:-${{ github.event.pull_request.base.sha }}}" >> "$GITHUB_OUTPUT"
+        echo "head-sha=${INPUT_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" >> "$GITHUB_OUTPUT"
+        echo "pr=${INPUT_PR:-${{ github.event.pull_request.number }}}" >> "$GITHUB_OUTPUT"
+        echo "repo=${INPUT_REPO:-${{ github.repository }}}" >> "$GITHUB_OUTPUT"
+        echo "out=${INPUT_OUT}" >> "$GITHUB_OUTPUT"
+        echo "config=${INPUT_CONFIG}" >> "$GITHUB_OUTPUT"
+        echo "base-dir=${RUNNER_TEMP}/diffbrief-base" >> "$GITHUB_OUTPUT"
+        echo "action=${{ github.action_path }}" >> "$GITHUB_OUTPUT"
+
+    - name: Classify changed paths
+      id: scope
+      shell: bash
+      env:
+        BASE_SHA: ${{ steps.meta.outputs.base-sha }}
+        HEAD_SHA: ${{ steps.meta.outputs.head-sha }}
+        DIFFBRIEF_CONFIG: ${{ github.workspace }}/${{ steps.meta.outputs.config }}
+      run: node "${{ github.action_path }}/scripts/classify.mjs" >> "$GITHUB_OUTPUT"
+
+    - name: Read producer settings
+      id: producers
+      shell: bash
+      env:
+        DIFFBRIEF_CONFIG: ${{ github.workspace }}/${{ steps.meta.outputs.config }}
+        DIFFBRIEF_STATE_DIR: ${{ runner.temp }}/diffbrief-state
+      run: node "${{ github.action_path }}/scripts/prepare-openapi.mjs" >> "$GITHUB_OUTPUT"
+
+    - name: Check out the merge base
+      if: ${{ steps.scope.outputs.relevant == 'true' }}
+      shell: bash
+      env:
+        BASE_SHA: ${{ steps.meta.outputs.base-sha }}
+        HEAD_SHA: ${{ steps.meta.outputs.head-sha }}
+        BASE_DIR: ${{ steps.meta.outputs.base-dir }}
+      run: bash "${{ github.action_path }}/scripts/checkout-base.sh"
+
+    - name: Install oasdiff
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      shell: bash
+      env:
+        OASDIFF_VERSION: ${{ steps.producers.outputs.oasdiff-version }}
+        OASDIFF_SHA256: ${{ steps.producers.outputs.oasdiff-sha256 }}
+        OASDIFF_INSTALL_DIR: ${{ runner.temp }}/oasdiff-bin
+      run: bash "${{ github.action_path }}/scripts/install-oasdiff.sh"
+
+    - name: Build head OpenAPI specs
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      shell: bash
+      env:
+        CHECKOUT: ${{ github.workspace }}
+        SPECS_OUT: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/head-specs
+        DISCOVER: ${{ steps.producers.outputs.discover }}
+        SPECS_GLOB: ${{ steps.producers.outputs.specs-glob }}
+        SKIP_BUILD: ${{ steps.producers.outputs.skip-build }}
+        BUILD_COMMAND_FILE: ${{ steps.producers.outputs.build-command-file }}
+        SPECS_LIST_FILE: ${{ steps.producers.outputs.specs-list-file }}
+      run: bash "${{ github.action_path }}/scripts/build-specs.sh"
+
+    - name: Build base OpenAPI specs
+      id: build-base
+      if: ${{ steps.scope.outputs.relevant == 'true' && steps.producers.outputs.openapi == 'true' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        CHECKOUT: ${{ steps.meta.outputs.base-dir }}
+        SPECS_OUT: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/base-specs
+        DISCOVER: ${{ steps.producers.outputs.discover }}
+        SPECS_GLOB: ${{ steps.producers.outputs.specs-glob }}
+        SKIP_BUILD: ${{ steps.producers.outputs.skip-build }}
+        BUILD_COMMAND_FILE: ${{ steps.producers.outputs.build-command-file }}
+        SPECS_LIST_FILE: ${{ steps.producers.outputs.specs-list-file }}
+      run: bash "${{ github.action_path }}/scripts/build-specs.sh"
+
+    - name: Publish the review comment
+      id: publish
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        BASE_DIR: ${{ steps.meta.outputs.base-dir }}
+        HEAD_DIR: ${{ github.workspace }}
+        BASE_SPECS: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/base-specs
+        HEAD_SPECS: ${{ github.workspace }}/${{ steps.meta.outputs.out }}/head-specs
+        OUT_DIR: ${{ github.workspace }}/${{ steps.meta.outputs.out }}
+        PR_NUMBER: ${{ steps.meta.outputs.pr }}
+        REPO: ${{ steps.meta.outputs.repo }}
+        RELEVANT: ${{ steps.scope.outputs.relevant }}
+        BASE_BUILD_OUTCOME: ${{ steps.build-base.outcome }}
+        OASDIFF_BIN: ${{ runner.temp }}/oasdiff-bin/oasdiff
+        DIFFBRIEF_CONFIG: ${{ github.workspace }}/${{ steps.meta.outputs.config }}
+      run: node "${{ github.action_path }}/scripts/run.mjs"
+
+    - name: Upload diffbrief output
+      if: ${{ always() && inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: diffbrief
+        path: ${{ steps.meta.outputs.out }}/
+        if-no-files-found: ignore
+
+    - name: Fail on breaking changes
+      if: ${{ always() }}
+      shell: bash
+      env:
+        OUT_DIR: ${{ github.workspace }}/${{ steps.meta.outputs.out }}
+      run: node "${{ github.action_path }}/scripts/check-breaking.mjs"

@@ -1,0 +1,13 @@
+{
+  "relevant": [
+    "openapi/**",
+    ".github/diffbrief.json"
+  ],
+  "producers": [
+    {
+      "type": "openapi",
+      "skipBuild": true,
+      "specs": ["openapi/public.yaml", "openapi/admin.yaml"]
+    }
+  ]
+}
