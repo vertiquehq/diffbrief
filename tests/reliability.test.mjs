@@ -85,3 +85,18 @@ test('project PR producer summarizes a real commit diff', (t) => {
   assert.match(report, /Producers and runtime: 1 file/);
   assert.match(report, /Tests and fixtures: 1 file/);
 });
+
+test('command producer titles do not become artifact paths', async (t) => {
+  const { run } = await import('../scripts/run.mjs');
+  const { normalizeConfig } = await import('../scripts/config.mjs');
+  const dir = fixture(t);
+  const head = path.join(dir, 'head');
+  mkdirSync(head);
+  write(head, 'producer.sh', 'printf "hello\\n" > "$DIFFBRIEF_FRAGMENT_DIR/fragment.md"\n');
+  const out = path.join(dir, 'out');
+  const result = run({ base: head, head, out, config: normalizeConfig({
+    producers: [{ type: 'command', id: 'What changed?', run: 'producer.sh' }],
+  }) });
+  assert.match(result.report, /What changed\?/);
+  assert.equal(readFileSync(path.join(out, 'fragments', '0', 'fragment.md'), 'utf8'), 'hello\n');
+});

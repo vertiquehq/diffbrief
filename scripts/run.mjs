@@ -127,8 +127,8 @@ function resolveConfig(options) {
   return loadConfig(file);
 }
 
-function runCommandProducer(producer, options) {
-  const fragmentDir = path.join(options.out, 'fragments', producer.id);
+function runCommandProducer(producer, options, index) {
+  const fragmentDir = path.join(options.out, 'fragments', String(index));
   mkdirSync(fragmentDir, { recursive: true });
   const env = {
     ...process.env,
@@ -352,8 +352,9 @@ export function run(options) {
       );
     }
 
-    for (const producer of config.producers.filter((item) => item.type === 'command')) {
-      const result = runCommandProducer(producer, options);
+    for (const [index, producer] of config.producers.entries()) {
+      if (producer.type !== 'command') continue;
+      const result = runCommandProducer(producer, options, index);
       pushSection(result.id, result);
     }
 
