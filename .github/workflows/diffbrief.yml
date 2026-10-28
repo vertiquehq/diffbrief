@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Koivisto Capital Oy
+# SPDX-License-Identifier: EUPL-1.2
+name: Diffbrief
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: ./
+        with:
+          token: ${{ github.token }}

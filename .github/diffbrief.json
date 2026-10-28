@@ -1,0 +1,5 @@
+{
+  "relevant": ["action.yml", "scripts/**", "tests/**", "fixtures/**", "docs/**", "examples/**", "README.md", "BACKLOG.md", "package.json", ".github/**"],
+  "failOn": "never",
+  "producers": [{ "type": "command", "id": "What parts of diffbrief changed?", "run": "scripts/self-review.sh" }]
+}

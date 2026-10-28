@@ -21,8 +21,8 @@ export const DEFAULT_MIGRATION_GLOBS = [
   '**/db/migration/**',
   '**/db/migrations/**',
   '**/flyway/**/*.sql',
-  '**/liquibase/**/*.{sql,xml,yml,yaml}',
-  '**/changelog*/**/*.{sql,xml,yml,yaml}',
+  ...['sql', 'xml', 'yml', 'yaml'].map((ext) => `**/liquibase/**/*.${ext}`),
+  ...['sql', 'xml', 'yml', 'yaml'].map((ext) => `**/changelog*/**/*.${ext}`),
 ];
 
 const VERSIONED = /(^|\/)V[0-9][^/]*\.(sql|SQL)$/;

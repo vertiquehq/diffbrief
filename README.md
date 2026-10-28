@@ -11,9 +11,7 @@ This repository is a **composite GitHub Action**. Consumer repositories keep a s
 
 ## Status
 
-The repository starts **private** so it can be exercised from other private repositories in the same GitHub organization. A **public** repository cannot use a private action. Flip this repository to public before wiring it into a public consumer (for example Vertique).
-
-Organization setting required while private: allow Actions workflows to access this private repository (org → Actions → General → Access).
+The repository is public and can be used from public or private repositories. Pin a released action version or commit in consumer workflows.
 
 ## Quick start
 
@@ -21,7 +19,7 @@ Organization setting required while private: allow Actions workflows to access t
 2. Add a workflow that checks out the PR head (`fetch-depth: 0`), sets up whatever toolchains your producers need (JDK, Node, …), then calls the action:
 
 ```yaml
-- uses: vertiquehq/diffbrief@v1
+- uses: vertiquehq/diffbrief@main
   with:
     config: .github/diffbrief.json
     token: ${{ github.token }}
@@ -62,7 +60,7 @@ Parses `pom.xml` files without running Maven. Uniform reactor version bumps fold
 
 The oasdiff **GitHub Action is not used**, so specs are not uploaded to oasdiff.com.
 
-Set `cacheSpecs: true` (or action input `cache-specs: true`) to cache collected specs by head SHA and merge-base SHA. Pass `head-specs-dir` / `base-specs-dir` or `reuse-*-artifact` to skip the Maven compile when CI already produced the YAMLs.
+Set `cacheSpecs: true` (or action input `cache-specs: true`) to cache collected specs by head SHA and merge-base SHA. Pass `head-specs-dir` / `base-specs-dir` or `reuse-*-artifact` to skip the Maven compile when CI already produced the YAMLs. Reused workflow artifacts must have been produced at the exact head or merge-base commit and require `actions: read` permission on the token.
 
 ### `asyncapi`
 
@@ -162,3 +160,5 @@ On a warm Maven cache for a Vertique-sized OpenAPI compile (eight example module
 ## License
 
 [European Union Public Licence v1.2](LICENSES/EUPL-1.2.txt).
+
+The project uses its own action in `.github/workflows/diffbrief.yml` to summarize the areas touched by a pull request. Fork pull requests receive a job summary and artifact; comment writes are skipped.

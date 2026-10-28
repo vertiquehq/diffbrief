@@ -161,6 +161,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         REPO: ${{ steps.meta.outputs.repo }}
+        EXPECTED_SHA: ${{ steps.meta.outputs.head-sha }}
         ARTIFACT_NAME: ${{ inputs.reuse-head-artifact }}
         DEST: ${{ steps.meta.outputs.head-specs }}
       run: bash "${{ github.action_path }}/scripts/download-workflow-artifact.sh"
@@ -171,6 +172,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         REPO: ${{ steps.meta.outputs.repo }}
+        EXPECTED_SHA: ${{ steps.checkout-base.outputs.merge-base }}
         ARTIFACT_NAME: ${{ inputs.reuse-base-artifact }}
         DEST: ${{ steps.meta.outputs.base-specs }}
       run: bash "${{ github.action_path }}/scripts/download-workflow-artifact.sh"
@@ -181,6 +183,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         REPO: ${{ steps.meta.outputs.repo }}
+        EXPECTED_SHA: ${{ steps.meta.outputs.head-sha }}
         ARTIFACT_NAME: ${{ inputs.reuse-playwright-artifact }}
         DEST: ${{ github.workspace }}/test-results
       run: bash "${{ github.action_path }}/scripts/download-workflow-artifact.sh"
@@ -288,7 +291,7 @@ runs:
       if: ${{ always() && inputs.upload-artifact == 'true' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: diffbrief
+        name: ${{ steps.producers.outputs.artifact }}
         path: ${{ steps.meta.outputs.out }}/
         if-no-files-found: ignore
 

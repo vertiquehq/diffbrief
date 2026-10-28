@@ -16,9 +16,9 @@ import { cmp, inlineCode } from './util.mjs';
 
 export const DEFAULT_I18N_GLOBS = [
   '**/messages*.properties',
-  '**/i18n/**/*.{properties,json}',
-  '**/locales/**/*.{properties,json}',
-  '**/lang/**/*.{properties,json}',
+  '**/i18n/**/*.properties', '**/i18n/**/*.json',
+  '**/locales/**/*.properties', '**/locales/**/*.json',
+  '**/lang/**/*.properties', '**/lang/**/*.json',
 ];
 
 function walkFiles(root, globs, listDir) {
