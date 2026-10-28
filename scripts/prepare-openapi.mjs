@@ -43,6 +43,7 @@ function main(argv, env = process.env) {
   writeFileSync(specsFile, producer?.specs?.length ? `${producer.specs.join('\n')}\n` : '');
 
   const lines = [
+    `artifact=${config.artifact}`,
     `openapi=${enabled ? 'true' : 'false'}`,
     `maven-reactor=${hasProducer(config, 'maven-reactor') ? 'true' : 'false'}`,
     `state-dir=${stateDir}`,

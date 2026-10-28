@@ -63,7 +63,7 @@ describe('path classification', () => {
     git(['commit', '-q', '-m', 'head']);
     const head = git(['rev-parse', 'HEAD']).toString().trim();
     const script = path.join(REPO_ROOT, 'scripts', 'classify.mjs');
-    const relevant = execFileSync('node', [script, '--base', base, '--head', head], { cwd: dir, encoding: 'utf8' });
+    const relevant = execFileSync('node', [script, '--base', base, '--head', head], { cwd: dir, encoding: 'utf8', env: { ...process.env, GITHUB_WORKSPACE: dir, DIFFBRIEF_CONFIG: '' } });
     assert.equal(relevant.trim(), 'relevant=true');
     rmSync(dir, { recursive: true, force: true });
   });

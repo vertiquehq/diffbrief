@@ -96,7 +96,7 @@ export function impliedRelevant(producer) {
     case 'migrations':
       return producer.globs?.length
         ? producer.globs
-        : ['**/db/migration/**', '**/db/migrations/**', '**/flyway/**', '**/liquibase/**'];
+        : ['**/db/migration/**', '**/db/migrations/**', '**/flyway/**', '**/liquibase/**', '**/changelog*/**'];
     case 'i18n':
       return producer.globs?.length
         ? producer.globs
@@ -104,7 +104,7 @@ export function impliedRelevant(producer) {
     case 'asyncapi':
       return producer.globs?.length
         ? producer.globs
-        : ['**/asyncapi.yaml', '**/asyncapi.yml', '**/asyncapi.json'];
+        : [...(producer.specs ?? []), '**/asyncapi.yaml', '**/asyncapi.yml', '**/asyncapi.json'];
     case 'dependencies':
       return [
         '**/pom.xml',

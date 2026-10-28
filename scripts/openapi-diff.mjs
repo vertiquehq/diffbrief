@@ -97,8 +97,9 @@ function listSpecs(dir, listDir) {
       const full = path.join(current, entry);
       const stat = statSync(full);
       if (stat.isDirectory()) walk(full);
-      else if (entry === 'openapi.yaml') {
-        const rel = path.relative(dir, full).split(path.sep).join('/');
+      else if (entry === 'openapi.yaml' || entry === 'openapi.yml') {
+        const rel = path.relative(dir, full).split(path.sep).join('/').replace(/\.yml$/, '.yaml');
+        if (found.has(rel)) throw new Error(`duplicate OpenAPI document: ${rel}`);
         found.set(rel, full);
       }
     }
@@ -250,6 +251,9 @@ export function diffOpenApi(options = {}) {
         ['changelog', baseFile, headFile, '--format', 'markdown', ...OASDIFF_SAFE_FLAGS],
         execFile,
       );
+      for (const result of [jsonRun, mdRun]) {
+        if (result.status !== 0) throw new Error(`oasdiff failed for ${key} (exit ${result.status}): ${result.stderr}`);
+      }
       const replacements = [
         [baseFile, key],
         [headFile, key],

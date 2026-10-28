@@ -12,7 +12,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { matchGlob } from './config.mjs';
@@ -72,12 +72,13 @@ function runCaptured(bin, args, exec) {
 
 function parseBreakingJson(stdout) {
   const text = String(stdout ?? '').trim();
-  if (!text || text === '[]') return [];
+  if (!text) throw new Error('asyncapi returned empty breaking JSON');
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+    if (!Array.isArray(parsed)) throw new Error('expected an array');
+    return parsed;
+  } catch (err) {
+    throw new Error(`invalid asyncapi breaking JSON: ${err.message}`);
   }
 }
 
@@ -93,8 +94,8 @@ export function diffAsyncApi(options = {}) {
   let baseFiles;
   let headFiles;
   if (options.specs?.length) {
-    baseFiles = new Map(options.specs.map((rel) => [rel, path.join(options.baseRoot, rel)]));
-    headFiles = new Map(options.specs.map((rel) => [rel, path.join(options.headRoot, rel)]));
+    baseFiles = new Map(options.specs.filter((rel) => existsSync(path.join(options.baseRoot, rel))).map((rel) => [rel, path.join(options.baseRoot, rel)]));
+    headFiles = new Map(options.specs.filter((rel) => existsSync(path.join(options.headRoot, rel))).map((rel) => [rel, path.join(options.headRoot, rel)]));
   } else {
     baseFiles = listSpecs(options.baseRoot, globs, listDir);
     headFiles = listSpecs(options.headRoot, globs, listDir);
@@ -118,6 +119,9 @@ export function diffAsyncApi(options = {}) {
         ['diff', baseFile, headFile, '-f', 'json', '-t', 'breaking', '--no-error'],
         execFile,
       );
+      for (const result of [md, br]) {
+        if (result.status !== 0) throw new Error(`asyncapi failed for ${key} (exit ${result.status}): ${result.stderr}`);
+      }
       const breakingItems = parseBreakingJson(br.stdout);
       const hasBreaking = breakingItems.length > 0;
       if (hasBreaking) breaking = true;
