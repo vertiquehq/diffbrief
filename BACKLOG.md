@@ -16,6 +16,7 @@ SPDX-License-Identifier: EUPL-1.2
 | `sarif` | New SAST findings vs base (feeds from PMD/CodeQL/SpotBugs SARIF) |
 | `playwright` | Package recorded videos/traces into the artifact + comment links |
 | `dependencies` | Maven externals + npm / yarn / pnpm / Cargo lockfiles |
+| `entry-complexity` | Cognitive complexity delta per JAX-RS / MCP / Kafka / job entry (Vertique pack; Spring via contrib) |
 
 ## CI artifact reuse (supported)
 
@@ -63,6 +64,8 @@ where the script reads CI-produced assets under `DIFFBRIEF_HEAD` / artifact down
 ## Likely next
 
 - HTML review page in the artifact (verdict + sections + embedded media)
+- JavaParser / symbol-solver engine for exact nesting and overload binding
+- Optional Vertique-aware edges for raw `EventBusClient` address literals
 - Filter Playwright media by changed test files / `@diffbrief` tags
 - Gradle lockfile / `pnpm-lock` importers-only mode
 - Optional `traces` built-in once a minimal asset layout is frozen

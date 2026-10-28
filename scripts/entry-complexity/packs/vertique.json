@@ -1,0 +1,32 @@
+{
+  "id": "vertique",
+  "annotations": [
+    { "name": "GET", "kind": "http", "httpMethod": "GET" },
+    { "name": "POST", "kind": "http", "httpMethod": "POST" },
+    { "name": "PUT", "kind": "http", "httpMethod": "PUT" },
+    { "name": "DELETE", "kind": "http", "httpMethod": "DELETE" },
+    { "name": "PATCH", "kind": "http", "httpMethod": "PATCH" },
+    { "name": "HEAD", "kind": "http", "httpMethod": "HEAD" },
+    { "name": "OPTIONS", "kind": "http", "httpMethod": "OPTIONS" },
+    {
+      "name": "McpTool",
+      "kind": "mcp",
+      "httpMethod": "MCP",
+      "pathArgs": ["name"]
+    },
+    {
+      "name": "KafkaSource",
+      "kind": "listener",
+      "httpMethod": "KAFKA",
+      "pathArgs": ["topic"]
+    },
+    {
+      "name": "DelayedJobHandlerMethod",
+      "kind": "job",
+      "httpMethod": "JOB",
+      "pathArgs": ["value"]
+    }
+  ],
+  "classPathAnnotations": [{ "name": "Path", "pathArgs": ["value"] }],
+  "methodPathAnnotations": [{ "name": "Path", "pathArgs": ["value"] }]
+}

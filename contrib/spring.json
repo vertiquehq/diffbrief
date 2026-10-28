@@ -1,0 +1,77 @@
+{
+  "id": "spring",
+  "annotations": [
+    {
+      "name": "GetMapping",
+      "kind": "http",
+      "httpMethod": "GET",
+      "pathArgs": ["path", "value"]
+    },
+    {
+      "name": "PostMapping",
+      "kind": "http",
+      "httpMethod": "POST",
+      "pathArgs": ["path", "value"]
+    },
+    {
+      "name": "PutMapping",
+      "kind": "http",
+      "httpMethod": "PUT",
+      "pathArgs": ["path", "value"]
+    },
+    {
+      "name": "DeleteMapping",
+      "kind": "http",
+      "httpMethod": "DELETE",
+      "pathArgs": ["path", "value"]
+    },
+    {
+      "name": "PatchMapping",
+      "kind": "http",
+      "httpMethod": "PATCH",
+      "pathArgs": ["path", "value"]
+    },
+    {
+      "name": "RequestMapping",
+      "kind": "http",
+      "httpMethod": "ANY",
+      "pathArgs": ["path", "value"],
+      "methodEnum": "RequestMethod"
+    },
+    {
+      "name": "KafkaListener",
+      "kind": "listener",
+      "httpMethod": "KAFKA",
+      "pathArgs": ["topics", "topic"]
+    },
+    {
+      "name": "RabbitListener",
+      "kind": "listener",
+      "httpMethod": "RABBIT",
+      "pathArgs": ["queues", "queue"]
+    },
+    {
+      "name": "JmsListener",
+      "kind": "listener",
+      "httpMethod": "JMS",
+      "pathArgs": ["destination"]
+    },
+    { "name": "Scheduled", "kind": "job", "httpMethod": "JOB" },
+    {
+      "name": "Tool",
+      "kind": "mcp",
+      "httpMethod": "MCP",
+      "pathArgs": ["name"]
+    },
+    {
+      "name": "McpTool",
+      "kind": "mcp",
+      "httpMethod": "MCP",
+      "pathArgs": ["name"]
+    }
+  ],
+  "classPathAnnotations": [
+    { "name": "RequestMapping", "pathArgs": ["path", "value"] }
+  ],
+  "methodPathAnnotations": []
+}
